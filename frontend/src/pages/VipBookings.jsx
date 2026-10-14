@@ -158,7 +158,7 @@ export default function VipBookings() {
       <p className="text-sm text-slate-400 mb-6">{t("vb_intro", lang)}</p>
 
       <section className="mb-8" data-testid="vip-escrow-dates">
-        <h2 className="font-serif-luxe text-xl mb-3 flex items-center gap-2"><Crown size={18} className="text-amber-300" /> VIP Dates</h2>
+        <h2 className="font-serif-luxe text-xl mb-3 flex items-center gap-2"><Crown size={18} className="text-amber-300" /> {t("vb_vip_dates", lang)}</h2>
         <DateBookingList mode="vip" />
       </section>
 

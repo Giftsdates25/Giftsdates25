@@ -5468,6 +5468,7 @@ async def cron_tick(authorization: Optional[str] = Header(None)):
     _cron_auth(authorization)
     asyncio.create_task(_run_lifecycle())
     asyncio.create_task(_run_booking_reminders())
+    asyncio.create_task(_vs_tick())
     return {"accepted": True}
 
 @api.post("/cron/spin")

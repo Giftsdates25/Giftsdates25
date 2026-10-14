@@ -54,6 +54,7 @@ export const VS_T = {
   ext_done: row("Date extended", "Встреча продлена", "Cita ampliada", "Rendez-vous prolongé", "Date verlängert", "Encontro prolongado", "约会已延长", "تم تمديد الموعد", "डेट बढ़ाई गई", "ডেট বাড়ানো হয়েছে", "ڈیٹ بڑھا دی گئی"),
   ext_in_progress: row("In progress", "Идёт сейчас", "En curso", "En cours", "Läuft", "Em andamento", "进行中", "جارٍ الآن", "जारी", "চলছে", "جاری"),
   cal_apple: row("Apple Calendar", "Apple Календарь", "Calendario de Apple", "Calendrier Apple", "Apple Kalender", "Calendário Apple", "Apple 日历", "تقويم Apple", "Apple कैलेंडर", "Apple ক্যালেন্ডার", "Apple کیلنڈر"),
+  vb_vip_dates: row("VIP Dates", "VIP встречи", "Citas VIP", "Rendez-vous VIP", "VIP-Dates", "Encontros VIP", "VIP约会", "مواعيد VIP", "VIP डेट्स", "VIP ডেট", "VIP ڈیٹس"),
   vb_title: row("VIP Bookings", "VIP бронирования", "Reservas VIP", "Réservations VIP", "VIP-Buchungen", "Reservas VIP", "VIP预约", "حجوزات VIP", "VIP बुकिंग", "VIP বুকিং", "VIP بکنگز"),
   vb_requests: row("Requests", "Запросы", "Solicitudes", "Demandes", "Anfragen", "Pedidos", "请求", "الطلبات", "अनुरोध", "অনুরোধ", "درخواستیں"),
   vb_confirmed: row("Confirmed", "Подтверждённые", "Confirmadas", "Confirmées", "Bestätigt", "Confirmadas", "已确认", "مؤكدة", "पुष्ट", "নিশ্চিত", "تصدیق شدہ"),
