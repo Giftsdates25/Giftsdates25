@@ -142,7 +142,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
               )}
               <Step n={++n} icon={Clock} title={t("bk_pick_start", lang)} testid="vs-book-step-time">
                 <TimeChooser key={`${day}-${dur}`} vertical day={day} wins={dayObj?.windows || []} taken={dayObj?.taken || []} slot={dur}
-                  value={startMin} onChange={setStartMin} testid="vs-book-time" note={t("bk_time_note", lang).replace("{h}", dur / 60)} />
+                  value={startMin} onChange={setStartMin} testid="vs-book-time" note={null} />
               </Step>
               {!isReschedule && (
                 <Step n={++n} icon={Sparkles} title={t("bk_activity", lang)} testid="vs-book-step-details">

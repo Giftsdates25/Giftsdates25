@@ -48,7 +48,7 @@ export default function TimeChooser({ day, wins = [], taken = [], value, onChang
           </div>
         )}
         {pastNote}
-        <p className="text-[11px] text-slate-500">{note || t("any_time_note", lang)}</p>
+        {note !== null && <p className="text-[11px] text-slate-500">{note || t("any_time_note", lang)}</p>}
       </div>
     </div>
   );
