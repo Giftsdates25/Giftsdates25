@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { Calendar, Clock, Check, X, Crown, Loader2, CalendarClock, Inbox, Send } from "lucide-react";
+import { Calendar, Clock, Check, X, Crown, Loader2, CalendarClock, Inbox, Send, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
@@ -72,7 +72,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
         {who === "outgoing" && live && <ExtendDateButton id={b.id} url={`/vip/schedule/bookings/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={onReload} />}
         <div className="text-right me-1">
           <div className="text-amber-300 font-mono-num text-sm">🪙 {b.coins}</div>
-          <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full border capitalize ${STATUS_BADGE[b.status]}`}>{b.status}</span>
+          <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full border ${STATUS_BADGE[b.status]}`} data-testid={`vs-status-${b.id}`}>{t(`vb_st_${b.status}`, lang)}</span>
         </div>
         {who === "incoming" && b.status === "pending" && (
           <>
@@ -144,10 +144,22 @@ export default function VipBookings() {
   const isVip = sched?.is_vip;
   const pending = sched?.pending || [];
   const confirmed = sched?.confirmed || [];
-  const past = sched?.past || [];
-  const minePending = mine.filter((m) => m.status === "pending");
-  const mineConfirmed = mine.filter((m) => m.status === "confirmed");
-  const minePast = mine.filter((m) => ["completed", "declined", "cancelled"].includes(m.status));
+  const CLOSED = ["declined", "cancelled"];
+  const past = (sched?.past || []).filter((b) => !CLOSED.includes(b.status));
+  const closedIn = (sched?.past || []).filter((b) => CLOSED.includes(b.status));
+  const mineActive = mine.filter((m) => ["pending", "confirmed", "completed"].includes(m.status));
+  const closedOut = mine.filter((m) => CLOSED.includes(m.status));
+  const closedCount = closedIn.length + closedOut.length;
+  const closedList = (
+    <div className="space-y-3" data-testid="vs-cancelled-list">
+      {closedCount === 0 ? <Empty icon={Ban} text={t("vb_none_cancelled", lang)} /> : (
+        <>
+          {closedIn.map((b) => <BookingCard key={b.id} b={b} who="incoming" busyId={busyId} />)}
+          {closedOut.map((b) => <BookingCard key={b.id} b={b} who="outgoing" busyId={busyId} />)}
+        </>
+      )}
+    </div>
+  );
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -162,16 +174,24 @@ export default function VipBookings() {
         <DateBookingList mode="vip" />
       </section>
 
+      {isVip && (
+        <section className="mb-8" data-testid="vs-availability-section">
+          <VipAvailabilityEditor blocks={sched?.blocks || []} onChanged={load} />
+        </section>
+      )}
+
       {isVip ? (
         <Tabs defaultValue="requests" className="w-full">
-          <TabsList className="bg-white/5 border border-white/10">
+          <TabsList className="bg-white/5 border border-white/10 flex-wrap h-auto">
             <TabsTrigger value="requests" data-testid="vs-tab-requests" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">
               {t("vb_requests", lang)} {pending.length > 0 && <span className="ml-1.5 text-[10px] bg-rose-500 text-white rounded-full px-1.5">{pending.length}</span>}
             </TabsTrigger>
             <TabsTrigger value="confirmed" data-testid="vs-tab-confirmed" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_confirmed", lang)}</TabsTrigger>
-            <TabsTrigger value="past" data-testid="vs-tab-past" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_past", lang)}</TabsTrigger>
-            <TabsTrigger value="availability" data-testid="vs-tab-availability" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_availability", lang)}</TabsTrigger>
             <TabsTrigger value="mine" data-testid="vs-tab-mine" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_mine", lang)}</TabsTrigger>
+            <TabsTrigger value="cancelled" data-testid="vs-tab-cancelled" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">
+              {t("vb_cancel_refused", lang)} {closedCount > 0 && <span className="ml-1.5 text-[10px] bg-slate-500/60 text-white rounded-full px-1.5">{closedCount}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="past" data-testid="vs-tab-past" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_past", lang)}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="requests" className="mt-5 space-y-3">
@@ -186,18 +206,11 @@ export default function VipBookings() {
             {past.length === 0 ? <Empty icon={Calendar} text={t("vb_none_past", lang)} /> :
               past.map((b) => <BookingCard key={b.id} b={b} who="incoming" busyId={busyId} />)}
           </TabsContent>
-          <TabsContent value="availability" className="mt-5">
-            <VipAvailabilityEditor blocks={sched?.blocks || []} onChanged={load} />
-          </TabsContent>
           <TabsContent value="mine" className="mt-5 space-y-3">
-            {mine.length === 0 ? <Empty icon={Send} text={t("vb_none_mine", lang)} /> : (
-              <>
-                {minePending.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />)}
-                {mineConfirmed.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />)}
-                {minePast.map((b) => <BookingCard key={b.id} b={b} who="outgoing" busyId={busyId} />)}
-              </>
-            )}
+            {mineActive.length === 0 ? <Empty icon={Send} text={t("vb_none_mine", lang)} /> :
+              mineActive.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />)}
           </TabsContent>
+          <TabsContent value="cancelled" className="mt-5">{closedList}</TabsContent>
         </Tabs>
       ) : (
         <div>
@@ -213,9 +226,11 @@ export default function VipBookings() {
           </div>
           <h2 className="font-serif-luxe text-xl mb-3 flex items-center gap-2"><Send size={18} className="text-rose-300" /> My date requests</h2>
           <div className="space-y-3">
-            {mine.length === 0 ? <Empty icon={Send} text={t("vb_none_mine", lang)} /> :
-              mine.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />)}
+            {mineActive.length === 0 ? <Empty icon={Send} text={t("vb_none_mine", lang)} /> :
+              mineActive.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />)}
           </div>
+          <h2 className="font-serif-luxe text-xl mt-8 mb-3 flex items-center gap-2"><Ban size={18} className="text-slate-300" /> {t("vb_cancel_refused", lang)}</h2>
+          {closedList}
         </div>
       )}
 

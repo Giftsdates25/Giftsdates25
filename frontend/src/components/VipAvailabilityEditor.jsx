@@ -13,24 +13,9 @@ import WeeklySchedule from "./WeeklySchedule";
 import { toKey, fromKey, crossesMidnight, DEFAULT_WIN } from "../lib/availability";
 import { t } from "../lib/i18n";
 
-const SLOT_LENGTHS = [30, 45, 60, 90, 120];
 const fmtDay = (d) => { try { return fromKey(d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }); } catch { return d; } };
 const toApi = (rs) => rs.map((r) => ({ start: r.from, end: r.to }));
 const ERR = { VIP_REQUIRED: "vs_vip_required", NO_WEEKDAYS: "vs_pick_day_err", NOTHING_TO_ADD: "vs_pick_day_err", HAS_BOOKINGS: "vs_has_bookings" };
-
-function SlotLength({ value, onChange, lang }) {
-  return (
-    <div>
-      <Label className="text-[11px] text-slate-400">{t("vs_slot_len", lang)}</Label>
-      <div className="flex flex-wrap gap-1.5 mt-1" data-testid="vs-avail-slotlen">
-        {SLOT_LENGTHS.map((L) => (
-          <button key={L} type="button" onClick={() => onChange(L)} data-testid={`vs-avail-slotlen-${L}`}
-            className={`px-2.5 py-1 rounded-full border text-xs transition-colors ${value === L ? "bg-amber-500/20 border-amber-500/50 text-amber-200" : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"}`}>{L}m</button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function PublishedList({ blocks, onRemove, lang }) {
   const byDate = {};
@@ -47,7 +32,7 @@ function PublishedList({ blocks, onRemove, lang }) {
               <div className="flex flex-wrap gap-1.5">
                 {byDate[d].sort((a, b) => a.start.localeCompare(b.start)).map((b) => (
                   <span key={b.id} data-testid={`vs-avail-block-${b.id}`} className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 font-mono-num">
-                    {b.recurring ? <Repeat size={10} /> : null}{b.start}–{b.end}{crossesMidnight({ from: b.start, to: b.end }) ? " 🌙" : ""} · {b.slot_len}m
+                    {b.recurring ? <Repeat size={10} /> : null}{b.start}–{b.end}{crossesMidnight({ from: b.start, to: b.end }) ? " 🌙" : ""}
                     <button onClick={() => onRemove(b.id)} data-testid={`vs-avail-del-${b.id}`} className="text-rose-300 hover:text-rose-200"><Trash2 size={12} /></button>
                   </span>
                 ))}
@@ -66,7 +51,7 @@ export default function VipAvailabilityEditor({ blocks = [], onChanged }) {
   const [ranges, setRanges] = useState([DEFAULT_WIN]);
   const [weekly, setWeekly] = useState({});
   const [weeks, setWeeks] = useState(8);
-  const [slotLen, setSlotLen] = useState(60);
+  const slotLen = 60;
   const [saving, setSaving] = useState(false);
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -94,7 +79,6 @@ export default function VipAvailabilityEditor({ blocks = [], onChanged }) {
         <h2 className="font-serif-luxe text-2xl flex items-center gap-2"><CalendarClock size={20} className="text-amber-300" /> {t("vs_title", lang)}</h2>
         <p className="text-xs text-slate-400 mt-1">{t("vs_intro", lang)}</p>
       </div>
-      <SlotLength value={slotLen} onChange={setSlotLen} lang={lang} />
       <Tabs defaultValue="days">
         <TabsList className="bg-white/5 border border-white/10">
           <TabsTrigger value="days" data-testid="vs-avail-tab-days" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vs_mode_days", lang)}</TabsTrigger>
