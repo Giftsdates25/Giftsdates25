@@ -121,6 +121,7 @@ GIFT_CATALOG = [
 GIFT_COMMISSION = 0.30
 VIDEO_RATE_PER_MIN = 10
 DATE_MIN_COINS = 150
+EXTRA_HOUR_MIN_COINS = 250  # minimum coins per extra-hour slot on VIP dates
 REFERRAL_BONUS = 100
 MAX_PHOTOS = 6
 PHONE_RE = re.compile(r"(?:\+?\d[\s\-\.\(\)_]*){7,}")
@@ -613,6 +614,7 @@ class DateBookingReq(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     place: Optional[str] = None  # VIP: own | your | other
+    extra_hours: int = 0  # VIP: extra hour slots added on top of the chosen duration
     activities: Optional[List[str]] = None  # exactly 3 custom date-idea options proposed by the inviter
 
 class DateConfirmReq(BaseModel):
@@ -729,6 +731,7 @@ async def meta():
         "video_rate": s["video_rate"],
         "gift_commission": s["commission"],
         "date_min_coins": s["date_min_coins"],
+        "extra_hour_min_coins": EXTRA_HOUR_MIN_COINS,
         "referral_bonus": s["referral_bonus"],
         "referral_package": next((p for p in s["coin_packages"] if p["id"] == s.get("referral_package_id")), None),
         "free_daily_likes": s["free_daily_likes"],
@@ -3463,6 +3466,7 @@ class VipProfileReq(BaseModel):
     price_2h: int = 0
     price_3h: int = 0
     price_night: int = 0
+    price_extra_hour: int = EXTRA_HOUR_MIN_COINS
     places: List[str] = []
     client_wants: str = ""
     availability: List[dict] = []
@@ -3521,7 +3525,7 @@ async def put_vip_profile(req: VipProfileReq, user=Depends(get_current_user)):
         except Exception: _weight = None
     vip = {"services": services,
            "services_note": (req.services_note or "").strip()[:500],
-           "prices": {"hour": max(0, req.price_hour), "h2": max(0, req.price_2h), "h3": max(0, req.price_3h), "night": max(0, req.price_night)},
+           "prices": {"hour": max(0, req.price_hour), "h2": max(0, req.price_2h), "h3": max(0, req.price_3h), "night": max(0, req.price_night), "extra": max(EXTRA_HOUR_MIN_COINS, req.price_extra_hour or 0)},
            "places": places, "client_wants": (req.client_wants or "").strip()[:1000],
            "nickname": (req.nickname or "").strip()[:40], "post_mode": post_mode,
            "age": _age, "city": (req.city or "").strip()[:80], "country": (req.country or "").strip()[:80],
@@ -3645,17 +3649,22 @@ async def vip_unlock(uid: str, user=Depends(get_current_user)):
                  f"A member unlocked your private VIP section · you earned 🪙 {owner_share} (50%).", {}, email=False)
     return {"unlocked": True, "coins_spent": price, "owner_share": owner_share, "platform_share": platform_share}
 
+def vip_extra_price(target: dict) -> int:
+    return max(EXTRA_HOUR_MIN_COINS, int(((target.get("vip") or {}).get("prices") or {}).get("extra") or 0))
+
 @api.post("/vip/book")
 async def vip_book(req: DateBookingReq, user=Depends(get_current_user)):
-    if req.coins <= 0:
+    if req.coins <= 0 or req.extra_hours < 0:
         raise HTTPException(400, "Invalid amount")
-    if (user.get("coins", 0) + user.get("withdrawable", 0)) < req.coins:
-        raise HTTPException(400, "Insufficient coins")
     target = await db.users.find_one({"id": req.target_id})
     if not target:
         target = await db.users.find_one({"vip.public_id": req.target_id})
     if not target:
         raise HTTPException(404, "Recipient not found")
+    extra_coins = req.extra_hours * vip_extra_price(target)
+    req.coins += extra_coins
+    if (user.get("coins", 0) + user.get("withdrawable", 0)) < req.coins:
+        raise HTTPException(400, "Insufficient coins")
     recipient_id = target["id"]
     if recipient_id == user["id"]:
         raise HTTPException(400, "CANNOT_BOOK_SELF")
@@ -3664,7 +3673,8 @@ async def vip_book(req: DateBookingReq, user=Depends(get_current_user)):
     doc = {"id": bid, "from_id": user["id"], "to_id": recipient_id, "venue": req.venue or "VIP", "city": req.city or "-",
            "address": (req.address or "").strip(), "postal_code": (req.postal_code or "").strip(), "country": (req.country or "").strip(),
            "lat": req.lat, "lng": req.lng, "place": req.place, "scheduled_at": req.scheduled_at,
-           "coins": req.coins, "status": "escrow", "photo_url": None, "release_at": None, "vip": True, "created_at": now}
+           "coins": req.coins, "extra_hours": req.extra_hours, "extra_coins": extra_coins,
+           "status": "escrow", "photo_url": None, "release_at": None, "vip": True, "created_at": now}
     await spend_coins(user["id"], req.coins)
     await db.users.update_one({"id": recipient_id}, {"$inc": {"escrow": req.coins}})
     await db.date_bookings.insert_one(doc)
@@ -3753,7 +3763,7 @@ async def _vs_normal_locks(vip_id, date):
     return (await _taken_blocks(u)).get(date, []) if u else []
 
 async def _vs_extra_checks(vip_id, date, cs, ce):
-    if ce - cs not in VIP_DURATIONS: raise HTTPException(400, "BAD_DURATION")
+    if ce - cs < 60 or (ce - cs) % 60: raise HTTPException(400, "BAD_DURATION")
     for b in await _vs_normal_locks(vip_id, date):
         lf, lt = _hm_to_min(b["lock_from"]), _hm_to_min(b["lock_to"])
         if lt <= lf: lt += 24 * 60
@@ -3851,7 +3861,7 @@ async def vs_del_availability(aid: str, user=Depends(get_current_user)):
 @api.get("/vip/schedule/{vip_id}/slots")
 async def vs_public_slots(vip_id: str, user=Depends(get_current_user)):
     """Public: bookable slots for a VIP, grouped by date, each tagged with a visual state."""
-    target = await db.users.find_one({"id": vip_id}, {"_id": 0, "id": 1, "timezone": 1})
+    target = await db.users.find_one({"id": vip_id}, {"_id": 0, "id": 1, "timezone": 1, "vip.prices": 1})
     if not target:
         raise HTTPException(404, "Not found")
     await _vs_autocomplete(vip_id)
@@ -3878,7 +3888,7 @@ async def vs_public_slots(vip_id: str, user=Depends(get_current_user)):
                   for b in await _vs_normal_locks(vip_id, dd["date"])]
         dd["taken"] = taken
     days = sorted(by_date.values(), key=lambda d: d["date"])
-    return {"tz": tz, "buffer": VIP_SCHED_BUFFER, "durations": list(VIP_DURATIONS), "days": days}
+    return {"tz": tz, "buffer": VIP_SCHED_BUFFER, "durations": list(VIP_DURATIONS), "extra_hour_price": vip_extra_price(target), "days": days}
 
 @api.post("/vip/schedule/{vip_id}/book")
 async def vs_book(vip_id: str, req: VipSchedBookReq, user=Depends(get_current_user)):
@@ -3913,6 +3923,11 @@ async def vs_book(vip_id: str, req: VipSchedBookReq, user=Depends(get_current_us
     if _vs_conflict(cs, ce, active, ref_start=ref_start):
         raise HTTPException(409, "SLOT_TAKEN")
     await _vs_extra_checks(vip_id, req.date, cs, ce)
+    extra_hours = (ce - cs) // 60 - 1
+    extra_coins = extra_hours * vip_extra_price(target)
+    req.coins += extra_coins
+    if (user.get("coins", 0) + user.get("withdrawable", 0)) < req.coins:
+        raise HTTPException(400, "Insufficient coins")
     now = datetime.now(timezone.utc)
     tz = req.tz or (blocks[0]["tz"] if blocks else (target.get("timezone") or "UTC"))
     bid = str(uuid.uuid4())
@@ -3921,7 +3936,7 @@ async def vs_book(vip_id: str, req: VipSchedBookReq, user=Depends(get_current_us
            "lock_start": _min_to_hm(max(0, cs - VIP_SCHED_BUFFER)),
            "lock_end": _min_to_hm(ce + VIP_SCHED_BUFFER),
            "activity": (req.activity or "").strip(), "venue": (req.venue or "").strip(),
-           "coins": int(req.coins), "status": "pending", "tz": tz,
+           "coins": int(req.coins), "extra_hours": extra_hours, "extra_coins": extra_coins, "status": "pending", "tz": tz,
            "created_at": now.isoformat(), "scheduled_at": f"{req.date}T{req.start}:00"}
     # atomic-ish: guard collection has a unique index on (vip_id,date,start) for active rows via a lock doc
     await spend_coins(user["id"], req.coins)
@@ -4081,6 +4096,8 @@ async def vs_reschedule(bid: str, req: VipRescheduleReq, user=Depends(get_curren
     if _vs_conflict(cs, ce, active, ref_start=ref_start):
         raise HTTPException(409, "SLOT_TAKEN")
     await _vs_extra_checks(vip_id, req.date, cs, ce)
+    if "extra_hours" in b and (ce - cs) // 60 - 1 != b["extra_hours"]:
+        raise HTTPException(400, "SAME_DURATION")
     now = datetime.now(timezone.utc).isoformat()
     await db.vip_sched.update_one({"id": bid}, {"$set": {
         "date": req.date, "start": req.start, "end": req.end,

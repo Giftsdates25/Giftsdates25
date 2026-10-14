@@ -83,6 +83,11 @@ export const PRICE_KEYS = [
   { k: "h3", tr: { ru: "За 3 часа", en: "3 hours", es: "3 horas", fr: "3 heures", de: "3 Stunden", pt: "3 horas", zh: "3小时", hi: "3 घंटे", bn: "৩ ঘণ্টা", ur: "3 گھنٹے", ar: "3 ساعات" } },
 ];
 
+export const EXTRA_HOUR_MIN = 250;
+const EXTRA_TR = { ru: "Доп. час", en: "Extra hour", es: "Hora extra", fr: "Heure supplémentaire", de: "Extra-Stunde", pt: "Hora extra", zh: "加时1小时", hi: "अतिरिक्त घंटा", bn: "অতিরিক্ত ঘণ্টা", ur: "اضافی گھنٹہ", ar: "ساعة إضافية" };
+export const extraLabel = (lang) => pick(EXTRA_TR, lang);
+export const extraPrice = (prices) => Math.max(EXTRA_HOUR_MIN, Number(prices?.extra) || 0);
+
 export const svcLabel = (ru, lang) => (lang === "ru" ? ru : (SVC_TR[ru]?.[lang] || SVC_TR[ru]?.en || ru));
 export const catTitle = (key, lang) => pick(CAT_TITLES[key], lang);
 export const placeLabel = (v, lang) => { const p = VIP_PLACES.find((x) => x.v === v); return p ? pick(p.tr, lang) : v; };

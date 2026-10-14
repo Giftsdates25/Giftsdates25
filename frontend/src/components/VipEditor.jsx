@@ -13,7 +13,7 @@ import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { VIP_CATEGORIES, VIP_PLACES, PRICE_KEYS, svcLabel, catTitle, placeLabel, priceLabel } from "../lib/vipCatalog";
+import { VIP_CATEGORIES, VIP_PLACES, PRICE_KEYS, svcLabel, catTitle, placeLabel, priceLabel, extraLabel, EXTRA_HOUR_MIN } from "../lib/vipCatalog";
 import { GENDERS } from "./ProfileDetailsForm";
 import CountrySelect from "./CountrySelect";
 import CitySelect from "./CitySelect";
@@ -74,7 +74,7 @@ export default function VipEditor() {
   const v = user?.vip || {};
   const [services, setServices] = useState(v.services || []);
   const [servicesNote, setServicesNote] = useState(v.services_note || "");
-  const [prices, setPrices] = useState(v.prices || { hour: "", h2: "", h3: "" });
+  const [prices, setPrices] = useState({ hour: "", h2: "", h3: "", ...(v.prices || {}), extra: v.prices?.extra || EXTRA_HOUR_MIN });
   const [places, setPlaces] = useState(v.places || []);
   const [wants, setWants] = useState(v.client_wants || "");
   const [slots, setSlots] = useState(v.availability || []);
@@ -174,6 +174,7 @@ export default function VipEditor() {
       const payload = {
         services, services_note: servicesNote, places, client_wants: wants,
         price_hour: Number(prices.hour) || 0, price_2h: Number(prices.h2) || 0, price_3h: Number(prices.h3) || 0,
+        price_extra_hour: Math.max(EXTRA_HOUR_MIN, Number(prices.extra) || 0),
         availability: slots, published: isVip ? published : false,
         nickname, post_mode: postMode,
         age: Number(sepAge) || null, city: sepCity, country: sepCountry,
@@ -375,6 +376,13 @@ export default function VipEditor() {
               <Input data-testid={`vip-price-${p.k}`} type="number" min="0" step="50" value={prices[p.k] ?? ""} onChange={(e) => setPrices({ ...prices, [p.k]: e.target.value })} className="bg-white/5 border-white/10 mt-1 font-mono-num" />
             </div>
           ))}
+          <div>
+            <label className="text-xs text-slate-400">{extraLabel(lang)} (min {EXTRA_HOUR_MIN})</label>
+            <Input data-testid="vip-price-extra" type="number" min={EXTRA_HOUR_MIN} step="50" value={prices.extra ?? ""}
+              onChange={(e) => setPrices({ ...prices, extra: e.target.value })}
+              onBlur={() => setPrices((p) => ({ ...p, extra: Math.max(EXTRA_HOUR_MIN, Number(p.extra) || 0) }))}
+              className="bg-white/5 border-white/10 mt-1 font-mono-num" />
+          </div>
         </div>
       </div>
 

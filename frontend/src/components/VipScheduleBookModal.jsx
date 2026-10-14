@@ -9,6 +9,8 @@ import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import TimeChooser from "./TimeChooser";
 import { minHm } from "../lib/availability";
+import ExtraHoursStepper from "./ExtraHoursStepper";
+import { EXTRA_HOUR_MIN } from "../lib/vipCatalog";
 
 const fmtDay = (d) => {
   try {
@@ -25,7 +27,9 @@ export default function VipScheduleBookModal({ open, onOpenChange, target, defau
   const [data, setData] = useState({ days: [], tz: "UTC", buffer: 15 });
   const [day, setDay] = useState(null);
   const [startMin, setStartMin] = useState(null);
-  const [dur, setDur] = useState(60);
+  const [extraHours, setExtraHours] = useState(0);
+  const dur = 60 * (1 + extraHours);
+  const setDur = (m) => setExtraHours(m / 60 - 1);
   const [activity, setActivity] = useState("");
   const [coins, setCoins] = useState(defaultCoins || meta?.date_min_coins || 300);
   const [busy, setBusy] = useState(false);
@@ -45,15 +49,17 @@ export default function VipScheduleBookModal({ open, onOpenChange, target, defau
   }, [target]);
 
   useEffect(() => {
-    if (open) { setStartMin(null); setDur(60); setActivity(""); setCoins(defaultCoins || meta?.date_min_coins || 300); load(); }
+    if (open) { setStartMin(null); setExtraHours(0); setActivity(""); setCoins(defaultCoins || meta?.date_min_coins || 300); load(); }
   }, [open, load, defaultCoins, meta]);
 
   const dayObj = (data.days || []).find((d) => d.date === day);
   const slot = startMin == null ? null : { start: minHm(startMin), end: minHm(startMin + dur) };
+  const extraPrice = data.extra_hour_price || EXTRA_HOUR_MIN;
+  const total = coins + extraHours * extraPrice;
 
   const submit = async () => {
     if (!slot) { toast.error("Pick an available time slot"); return; }
-    if (!isReschedule && ((user?.coins || 0) + (user?.withdrawable || 0)) < coins) { toast.error("Not enough coins"); return; }
+    if (!isReschedule && ((user?.coins || 0) + (user?.withdrawable || 0)) < total) { toast.error("Not enough coins"); return; }
     setBusy(true);
     try {
       if (isReschedule) {
@@ -74,7 +80,8 @@ export default function VipScheduleBookModal({ open, onOpenChange, target, defau
       toast.error(
         d === "SLOT_TAKEN" ? "That time was just taken. Please pick another slot."
           : d === "TIME_UNAVAILABLE" ? "This time is not available."
-          : d === "BAD_DURATION" ? "Choose a 1h, 2h or 3h date."
+          : d === "BAD_DURATION" ? "Choose a whole number of hours."
+          : d === "SAME_DURATION" ? "Keep the same length (extra hours) when rescheduling."
           : d === "CANNOT_BOOK_SELF" ? "You cannot book yourself."
           : d === "NOT_PENDING" ? "This booking can no longer be rescheduled."
           : d === "Insufficient coins" ? "Not enough coins."
@@ -115,7 +122,7 @@ export default function VipScheduleBookModal({ open, onOpenChange, target, defau
 
             <div>
               <Label className="text-xs text-slate-400">How long?</Label>
-              <div className="mt-1.5 flex gap-2" data-testid="vs-book-durations">
+              <div className="mt-1.5 flex gap-2 mb-2" data-testid="vs-book-durations">
                 {(data.durations || DURATIONS).map((m) => (
                   <button key={m} type="button" onClick={() => setDur(m)} data-testid={`vs-book-dur-${m / 60}h`}
                     className={`flex-1 px-3 py-2 rounded-xl border text-sm font-mono-num transition-colors ${dur === m ? "bg-amber-500 border-amber-500 text-black font-semibold" : "bg-white/5 border-white/10 text-slate-200 hover:bg-white/10"}`}>
@@ -123,6 +130,7 @@ export default function VipScheduleBookModal({ open, onOpenChange, target, defau
                   </button>
                 ))}
               </div>
+              <ExtraHoursStepper label="Extra hours (each slot after the 1st)" value={extraHours} onChange={(n) => { setExtraHours(n); setStartMin(null); }} price={extraPrice} testid="vs-book-extra-hours" />
             </div>
 
             <div>
@@ -154,7 +162,7 @@ export default function VipScheduleBookModal({ open, onOpenChange, target, defau
             </div>
 
             <Button data-testid="vs-book-submit" disabled={busy || !slot} onClick={submit} className="rose-btn text-white border-0 w-full h-11">
-              {busy ? <Loader2 size={16} className="animate-spin" /> : (isReschedule ? <>Propose new time</> : <>Request date · 🪙 {coins}</>)}
+              {busy ? <Loader2 size={16} className="animate-spin" /> : (isReschedule ? <>Propose new time</> : <>Request date · 🪙 {total}</>)}
             </Button>
           </div>
         )}

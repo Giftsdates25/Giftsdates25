@@ -7,7 +7,8 @@ import { useApp } from "../context/AppContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import AddressPicker from "./AddressPicker";
-import { PRICE_KEYS, svcLabel, placeLabel, priceLabel } from "../lib/vipCatalog";
+import { PRICE_KEYS, svcLabel, placeLabel, priceLabel, extraLabel, extraPrice } from "../lib/vipCatalog";
+import ExtraHoursStepper from "./ExtraHoursStepper";
 import VipScheduleBookModal from "./VipScheduleBookModal";
 import { t } from "../lib/i18n";
 
@@ -21,6 +22,7 @@ export default function VipSection({ userId, name, preview }) {
   const [busy, setBusy] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [schedOpen, setSchedOpen] = useState(false);
+  const [extraHours, setExtraHours] = useState(0);
 
   const unlockSection = async () => {
     const price = data?.unlock_price || 100;
@@ -81,12 +83,14 @@ export default function VipSection({ userId, name, preview }) {
   const priceFor = (k) => v.prices?.[k] || 0;
   const hasPlaces = (v.places?.length || 0) > 0;
 
+  const extra = extraPrice(v.prices);
   const book = async (durKey) => {
     const coins = priceFor(durKey);
     if (!coins) { toast.error("Цена не указана"); return; }
+    const total = coins + extraHours * extra;
     if (hasPlaces && !place) { toast.error(t("vip_select_place_first", lang)); return; }
     if (place && place !== "own" && !loc.address) { toast.error(t("vip_addr_required", lang)); return; }
-    if ((( user?.coins || 0) + (user?.withdrawable || 0)) < coins) { toast.error("Недостаточно монет", { action: { label: "Пополнить", onClick: () => nav("/wallet") } }); return; }
+    if ((( user?.coins || 0) + (user?.withdrawable || 0)) < total) { toast.error("Недостаточно монет", { action: { label: "Пополнить", onClick: () => nav("/wallet") } }); return; }
     setBusy(true);
     try {
       const providerHosts = place === "own";
@@ -102,9 +106,10 @@ export default function VipSection({ userId, name, preview }) {
         lng: providerHosts ? null : (loc.lng ?? null),
         scheduled_at: `${slot.date}T${slot.from}:00`,
         coins,
+        extra_hours: extraHours,
       });
       toast.success(t("vip_booked_toast", lang));
-      setSlot(null); setPlace(null); setLoc({});
+      setSlot(null); setPlace(null); setLoc({}); setExtraHours(0);
       await refreshUser();
     } catch (e) { toast.error(e.response?.data?.detail || "Ошибка"); } finally { setBusy(false); }
   };
@@ -166,6 +171,12 @@ export default function VipSection({ userId, name, preview }) {
             <div className="font-mono-num text-amber-300">🪙 {priceFor(p.k)}</div>
           </div>
         ))}
+        {PRICE_KEYS.some((p) => priceFor(p.k) > 0) && (
+          <div className="glass rounded-xl p-3 text-center border border-amber-500/25" data-testid="vip-price-extra-view">
+            <div className="text-[11px] text-slate-400">{extraLabel(lang)}</div>
+            <div className="font-mono-num text-amber-300">+ 🪙 {extra}</div>
+          </div>
+        )}
       </div>
 
       {v.places?.length > 0 && (
@@ -194,7 +205,7 @@ export default function VipSection({ userId, name, preview }) {
         defaultCoins={v.date_price || (v.prices && Object.values(v.prices).find((x) => x > 0)) || undefined}
       />
 
-      <Dialog open={!!slot} onOpenChange={(o) => { if (!o) { setSlot(null); setPlace(null); setLoc({}); } }}>
+      <Dialog open={!!slot} onOpenChange={(o) => { if (!o) { setSlot(null); setPlace(null); setLoc({}); setExtraHours(0); } }}>
         <DialogContent className="bg-[#161018] border-white/10 text-white max-w-sm max-h-[85vh] overflow-y-auto" data-testid="vip-book-dialog">
           <DialogHeader><DialogTitle className="font-serif-luxe text-xl">{data.name || name}</DialogTitle></DialogHeader>
           {slot && <p className="text-sm text-slate-400"><Calendar size={13} className="inline me-1 -mt-0.5" />{slot.date} · {slot.from}–{slot.to}</p>}
@@ -218,11 +229,12 @@ export default function VipSection({ userId, name, preview }) {
             </div>
           )}
 
+          <ExtraHoursStepper label={extraLabel(lang)} value={extraHours} onChange={setExtraHours} price={extra} testid="vip-book-extra-hours" />
           <div className="text-xs font-semibold text-amber-200">{t("vip_book_btn", lang)}</div>
           <div className="grid grid-cols-2 gap-2">
             {PRICE_KEYS.map((p) => priceFor(p.k) > 0 && (
               <Button key={p.k} data-testid={`vip-book-${p.k}`} onClick={() => book(p.k)} disabled={busy} className="rose-btn text-white border-0 h-auto py-2 flex-col">
-                <span className="text-xs">{priceLabel(p.k, lang)}</span><span className="font-mono-num">🪙 {priceFor(p.k)}</span>
+                <span className="text-xs">{priceLabel(p.k, lang)}{extraHours > 0 ? ` + ${extraHours}h` : ""}</span><span className="font-mono-num">🪙 {priceFor(p.k) + extraHours * extra}</span>
               </Button>
             ))}
           </div>

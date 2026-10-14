@@ -4,9 +4,9 @@ import re
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://repo-site-restore.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://gd24-preview.preview.emergentagent.com").rstrip("/")
 ADMIN_EMAIL = "giftsdates@gmail.com"
-ADMIN_PASSWORD = "Admin@12345"
+ADMIN_PASSWORD = "Admin@GD24!"
 ORIGIN = BASE_URL
 
 
