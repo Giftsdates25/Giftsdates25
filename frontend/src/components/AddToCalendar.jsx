@@ -23,10 +23,10 @@ const downloadIcs = ({ id, title, place, start, end, link }) => {
   const a = document.createElement("a"); a.href = url; a.download = `giftsdates-${id}.ics`; a.click(); URL.revokeObjectURL(url);
 };
 
-export default function AddToCalendar({ id, title, place, start, end }) {
+export default function AddToCalendar({ id, title, place, start, end, link = "/dates" }) {
   const { lang } = useApp();
   if (!start || isNaN(start)) return null;
-  const ev = { id, title, place, start, end: end || new Date(start.getTime() + 150 * 60000), link: `${window.location.origin}/dates` };
+  const ev = { id, title, place, start, end: end || new Date(start.getTime() + 150 * 60000), link: `${window.location.origin}${link}` };
   return (
     <DropdownMenu>
       <DropdownMenuTrigger data-testid={`add-to-calendar-${id}`}
@@ -41,6 +41,9 @@ export default function AddToCalendar({ id, title, place, start, end }) {
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => downloadIcs(ev)} className="cursor-pointer focus:bg-white/10 focus:text-white" data-testid={`cal-ics-${id}`}>
           <Download size={14} className="me-2" />{t("cal_ics_reminders", lang)}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => downloadIcs(ev)} className="cursor-pointer focus:bg-white/10 focus:text-white" data-testid={`cal-apple-${id}`}>
+          <CalendarPlus size={14} className="me-2" />{t("cal_apple", lang)}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

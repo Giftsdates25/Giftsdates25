@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -615,6 +615,7 @@ class DateBookingReq(BaseModel):
     lng: Optional[float] = None
     place: Optional[str] = None  # VIP: own | your | other
     extra_hours: int = 0  # VIP: extra hour slots added on top of the chosen duration
+    vip_length: Optional[int] = None  # VIP: chosen base length in hours (1/2/3) priced from the VIP's rates
     activities: Optional[List[str]] = None  # exactly 3 custom date-idea options proposed by the inviter
 
 class DateConfirmReq(BaseModel):
@@ -2899,6 +2900,9 @@ async def list_dates(user=Depends(get_current_user)):
                     await db.transactions.insert_one({"id": str(uuid.uuid4()), "type": "platform_fee_no_photo", "from_id": user["id"], "to_id": "platform", "cost": cut, "net": cut, "created_at": now_dt.isoformat()})
     outgoing = await db.date_bookings.find({"from_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
     incoming = await db.date_bookings.find({"to_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    for b in outgoing:
+        if b.get("vip"):
+            b["extra_hour_price"] = vip_extra_price(await db.users.find_one({"id": b["to_id"]}, {"_id": 0, "vip.prices": 1}) or {})
     return {"outgoing": outgoing, "incoming": incoming}
 
 @api.post("/dates/confirm")
@@ -3525,7 +3529,7 @@ async def put_vip_profile(req: VipProfileReq, user=Depends(get_current_user)):
         except Exception: _weight = None
     vip = {"services": services,
            "services_note": (req.services_note or "").strip()[:500],
-           "prices": {"hour": max(0, req.price_hour), "h2": max(0, req.price_2h), "h3": max(0, req.price_3h), "night": max(0, req.price_night), "extra": max(EXTRA_HOUR_MIN_COINS, req.price_extra_hour or 0)},
+           "prices": {"hour": max(EXTRA_HOUR_MIN_COINS, req.price_hour), "h2": max(EXTRA_HOUR_MIN_COINS, req.price_2h), "h3": max(EXTRA_HOUR_MIN_COINS, req.price_3h), "night": max(0, req.price_night), "extra": max(EXTRA_HOUR_MIN_COINS, req.price_extra_hour or 0)},
            "places": places, "client_wants": (req.client_wants or "").strip()[:1000],
            "nickname": (req.nickname or "").strip()[:40], "post_mode": post_mode,
            "age": _age, "city": (req.city or "").strip()[:80], "country": (req.country or "").strip()[:80],
@@ -3652,6 +3656,18 @@ async def vip_unlock(uid: str, user=Depends(get_current_user)):
 def vip_extra_price(target: dict) -> int:
     return max(EXTRA_HOUR_MIN_COINS, int(((target.get("vip") or {}).get("prices") or {}).get("extra") or 0))
 
+VIP_RATE_KEYS = {1: "hour", 2: "h2", 3: "h3"}
+
+def vip_rates(target: dict) -> dict:
+    p = (target.get("vip") or {}).get("prices") or {}
+    return {h: max(EXTRA_HOUR_MIN_COINS, int(p.get(k) or 0)) for h, k in VIP_RATE_KEYS.items()}
+
+def vip_total(target: dict, length: int, extra_hours: int) -> int:
+    """Coins for a VIP date: the VIP's own 1h/2h/3h rate + extra hours at the VIP's extra-hour rate."""
+    if length not in VIP_RATE_KEYS or extra_hours < 0:
+        raise HTTPException(400, "BAD_DURATION")
+    return vip_rates(target)[length] + extra_hours * vip_extra_price(target)
+
 @api.post("/vip/book")
 async def vip_book(req: DateBookingReq, user=Depends(get_current_user)):
     if req.coins <= 0 or req.extra_hours < 0:
@@ -3662,9 +3678,16 @@ async def vip_book(req: DateBookingReq, user=Depends(get_current_user)):
     if not target:
         raise HTTPException(404, "Recipient not found")
     extra_coins = req.extra_hours * vip_extra_price(target)
-    req.coins += extra_coins
+    if req.vip_length:
+        req.coins = vip_total(target, req.vip_length, req.extra_hours)
+    else:
+        req.coins += extra_coins
     if (user.get("coins", 0) + user.get("withdrawable", 0)) < req.coins:
         raise HTTPException(400, "Insufficient coins")
+    dur_min = 60 * ((req.vip_length or 1) + req.extra_hours) if req.vip_length else None
+    sched_dt = _pdt(req.scheduled_at)
+    if sched_dt and (sched_dt if sched_dt.tzinfo else sched_dt.replace(tzinfo=timezone.utc)) <= datetime.now(timezone.utc) - timedelta(hours=14):
+        raise HTTPException(400, "TIME_PASSED")
     recipient_id = target["id"]
     if recipient_id == user["id"]:
         raise HTTPException(400, "CANNOT_BOOK_SELF")
@@ -3674,6 +3697,8 @@ async def vip_book(req: DateBookingReq, user=Depends(get_current_user)):
            "address": (req.address or "").strip(), "postal_code": (req.postal_code or "").strip(), "country": (req.country or "").strip(),
            "lat": req.lat, "lng": req.lng, "place": req.place, "scheduled_at": req.scheduled_at,
            "coins": req.coins, "extra_hours": req.extra_hours, "extra_coins": extra_coins,
+           **({"duration_min": dur_min, "vip_length": req.vip_length, "local_day": req.scheduled_at[:10],
+               "slot_from": req.scheduled_at[11:16], "slot_to": _min_to_hm(_hm_to_min(req.scheduled_at[11:16]) + dur_min)} if dur_min else {}),
            "status": "escrow", "photo_url": None, "release_at": None, "vip": True, "created_at": now}
     await spend_coins(user["id"], req.coins)
     await db.users.update_one({"id": recipient_id}, {"$inc": {"escrow": req.coins}})
@@ -3698,7 +3723,8 @@ class VipSchedBookReq(BaseModel):
     date: str
     start: str
     end: str
-    coins: int
+    coins: int = 0
+    length: int = 0  # base length in hours (1/2/3); hours beyond it are extra hours
     activity: Optional[str] = ""
     venue: Optional[str] = ""
     tz: Optional[str] = None
@@ -3760,7 +3786,7 @@ VIP_DURATIONS = (60, 120, 180)
 async def _vs_normal_locks(vip_id, date):
     """Normal-date lock windows (already include the 15-min buffer) of the VIP on a day."""
     u = await db.users.find_one({"id": vip_id}, {"_id": 0})
-    return (await _taken_blocks(u)).get(date, []) if u else []
+    return [b for b in (await _taken_blocks(u)).get(date, []) if b["reason"] != "cancelled"] if u else []
 
 async def _vs_extra_checks(vip_id, date, cs, ce):
     if ce - cs < 60 or (ce - cs) % 60: raise HTTPException(400, "BAD_DURATION")
@@ -3888,7 +3914,8 @@ async def vs_public_slots(vip_id: str, user=Depends(get_current_user)):
                   for b in await _vs_normal_locks(vip_id, dd["date"])]
         dd["taken"] = taken
     days = sorted(by_date.values(), key=lambda d: d["date"])
-    return {"tz": tz, "buffer": VIP_SCHED_BUFFER, "durations": list(VIP_DURATIONS), "extra_hour_price": vip_extra_price(target), "days": days}
+    return {"tz": tz, "buffer": VIP_SCHED_BUFFER, "durations": list(VIP_DURATIONS), "extra_hour_price": vip_extra_price(target),
+            "rates": {str(h): c for h, c in vip_rates(target).items()}, "days": days}
 
 @api.post("/vip/schedule/{vip_id}/book")
 async def vs_book(vip_id: str, req: VipSchedBookReq, user=Depends(get_current_user)):
@@ -3897,10 +3924,6 @@ async def vs_book(vip_id: str, req: VipSchedBookReq, user=Depends(get_current_us
     target = await db.users.find_one({"id": vip_id})
     if not target:
         raise HTTPException(404, "Recipient not found")
-    if req.coins <= 0:
-        raise HTTPException(400, "Invalid amount")
-    if (user.get("coins", 0) + user.get("withdrawable", 0)) < req.coins:
-        raise HTTPException(400, "Insufficient coins")
     ns, ne = _hm_to_min(req.start), _hm_to_min(req.end)
     if ns == ne:
         raise HTTPException(400, "BAD_TIME")
@@ -3923,9 +3946,15 @@ async def vs_book(vip_id: str, req: VipSchedBookReq, user=Depends(get_current_us
     if _vs_conflict(cs, ce, active, ref_start=ref_start):
         raise HTTPException(409, "SLOT_TAKEN")
     await _vs_extra_checks(vip_id, req.date, cs, ce)
-    extra_hours = (ce - cs) // 60 - 1
+    hours = (ce - cs) // 60
+    length = req.length if req.length in VIP_RATE_KEYS else min(3, hours)
+    if length > hours:
+        raise HTTPException(400, "BAD_DURATION")
+    extra_hours = hours - length
     extra_coins = extra_hours * vip_extra_price(target)
-    req.coins += extra_coins
+    req.coins = vip_total(target, length, extra_hours)
+    if _vs_start_dt({"date": req.date, "start": req.start, "tz": req.tz or (blocks[0].get("tz") if blocks else "UTC")}) <= datetime.now(timezone.utc):
+        raise HTTPException(400, "TIME_PASSED")
     if (user.get("coins", 0) + user.get("withdrawable", 0)) < req.coins:
         raise HTTPException(400, "Insufficient coins")
     now = datetime.now(timezone.utc)
@@ -3936,7 +3965,7 @@ async def vs_book(vip_id: str, req: VipSchedBookReq, user=Depends(get_current_us
            "lock_start": _min_to_hm(max(0, cs - VIP_SCHED_BUFFER)),
            "lock_end": _min_to_hm(ce + VIP_SCHED_BUFFER),
            "activity": (req.activity or "").strip(), "venue": (req.venue or "").strip(),
-           "coins": int(req.coins), "extra_hours": extra_hours, "extra_coins": extra_coins, "status": "pending", "tz": tz,
+           "coins": int(req.coins), "hours": hours, "length": length, "extra_hours": extra_hours, "extra_coins": extra_coins, "status": "pending", "tz": tz,
            "created_at": now.isoformat(), "scheduled_at": f"{req.date}T{req.start}:00"}
     # atomic-ish: guard collection has a unique index on (vip_id,date,start) for active rows via a lock doc
     await spend_coins(user["id"], req.coins)
@@ -4013,7 +4042,8 @@ async def vs_my_requests(user=Depends(get_current_user)):
     raw = await db.vip_sched.find({"requester_id": user["id"]}, {"_id": 0}).sort([("date", 1), ("start", 1)]).to_list(500)
     out = []
     for b in raw:
-        vip = await db.users.find_one({"id": b["vip_id"]}, {"_id": 0, "id": 1, "name": 1, "photos": 1})
+        vip = await db.users.find_one({"id": b["vip_id"]}, {"_id": 0, "id": 1, "name": 1, "photos": 1, "vip.prices": 1})
+        b["extra_hour_price"] = vip_extra_price(vip or {})
         b["vip_card"] = {"id": b["vip_id"], "name": (vip or {}).get("name") or "VIP", "photo": ((vip or {}).get("photos") or [None])[0]}
         out.append(b)
     return {"requests": out}
@@ -4060,6 +4090,126 @@ async def vs_add_recurring(req: VipRecurringReq, user=Depends(get_current_user))
         created.append(_vs_clean(doc))
     return {"created": len(created), "blocks": created}
 
+# ---- Bulk availability: several days x several time ranges, or a weekly schedule ----
+class VipRange(BaseModel):
+    start: str
+    end: str
+
+class VipBulkAvailReq(BaseModel):
+    dates: List[str] = []
+    ranges: List[VipRange] = []
+    slot_len: int = 60
+    tz: Optional[str] = None
+
+class VipWeeklyAvailReq(BaseModel):
+    weekly: Dict[str, List[VipRange]] = {}  # "0"(Mon)..."6"(Sun) -> ranges
+    weeks: int = 8
+    slot_len: int = 60
+    tz: Optional[str] = None
+
+async def _vs_insert_blocks(user, items, slot_len, tz, recurring=False):
+    """items: [(date, start, end)]; skips past days, empty/too-short windows and duplicates."""
+    slot_len = max(15, min(240, int(slot_len or 60)))
+    today, created = _vs_today(), []
+    for dk, st, en in items:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", dk) or dk < today:
+            continue
+        a, z = _hm_to_min(st), _hm_to_min(en)
+        if a == z or ((z - a) if z > a else z + 1440 - a) < slot_len:
+            continue
+        st, en = _min_to_hm(a), _min_to_hm(z)
+        if await db.vip_avail.find_one({"vip_id": user["id"], "date": dk, "start": st, "end": en}):
+            continue
+        doc = {"id": str(uuid.uuid4()), "vip_id": user["id"], "date": dk, "start": st, "end": en, "slot_len": slot_len,
+               "tz": tz or user.get("timezone") or "UTC", "recurring": recurring, "created_at": datetime.now(timezone.utc).isoformat()}
+        await db.vip_avail.insert_one(doc)
+        created.append(_vs_clean(doc))
+    return {"created": len(created), "blocks": created}
+
+@api.post("/vip/schedule/availability/bulk")
+async def vs_add_bulk(req: VipBulkAvailReq, user=Depends(get_current_user)):
+    if not is_vip(user):
+        raise HTTPException(403, "VIP_REQUIRED")
+    if not req.dates or not req.ranges:
+        raise HTTPException(400, "NOTHING_TO_ADD")
+    items = [(d, r.start, r.end) for d in sorted(set(req.dates))[:120] for r in req.ranges[:8]]
+    return await _vs_insert_blocks(user, items, req.slot_len, req.tz)
+
+@api.post("/vip/schedule/availability/weekly")
+async def vs_add_weekly(req: VipWeeklyAvailReq, user=Depends(get_current_user)):
+    if not is_vip(user):
+        raise HTTPException(403, "VIP_REQUIRED")
+    weekly = {int(k): v[:8] for k, v in req.weekly.items() if k.isdigit() and 0 <= int(k) <= 6 and v}
+    if not weekly:
+        raise HTTPException(400, "NO_WEEKDAYS")
+    today = datetime.now(timezone.utc).date()
+    items = []
+    for i in range(max(1, min(26, int(req.weeks or 8))) * 7):
+        d = today + timedelta(days=i)
+        for r in weekly.get(d.weekday(), []):
+            items.append((d.strftime("%Y-%m-%d"), r.start, r.end))
+    return await _vs_insert_blocks(user, items, req.slot_len, req.tz, recurring=True)
+
+# ---- Add extra hours while a VIP date is in progress ----
+class VipExtendReq(BaseModel):
+    hours: int = 1
+
+async def _charge_extension(user, vip_id, hours):
+    if hours < 1 or hours > 24:
+        raise HTTPException(400, "BAD_HOURS")
+    vip = await db.users.find_one({"id": vip_id})
+    cost = hours * vip_extra_price(vip or {})
+    if (user.get("coins", 0) + user.get("withdrawable", 0)) < cost:
+        raise HTTPException(400, "Insufficient coins")
+    await spend_coins(user["id"], cost)
+    await db.users.update_one({"id": vip_id}, {"$inc": {"escrow": cost}})
+    return cost
+
+@api.post("/vip/schedule/bookings/{bid}/extend")
+async def vs_extend(bid: str, req: VipExtendReq, user=Depends(get_current_user)):
+    b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
+    if not b or b["requester_id"] != user["id"]:
+        raise HTTPException(404, "Not found")
+    now = datetime.now(timezone.utc)
+    if b["status"] != "confirmed" or not (_vs_start_dt(b) <= now < _vs_end_dt(b)):
+        raise HTTPException(400, "NOT_IN_PROGRESS")
+    S = _hm_to_min(b["start"]); E = _hm_to_min(b["end"])
+    if E <= S: E += 1440
+    ne = E + 60 * req.hours
+    others = await db.vip_sched.find({"vip_id": b["vip_id"], "date": b["date"], "status": {"$in": VIP_SCHED_ACTIVE}, "id": {"$ne": bid}},
+                                     {"_id": 0, "start": 1, "end": 1}).to_list(500)
+    if _vs_conflict(E, ne, others, ref_start=S):
+        raise HTTPException(409, "SLOT_TAKEN")
+    for lk in await _vs_normal_locks(b["vip_id"], b["date"]):
+        lf, lt = _hm_to_min(lk["lock_from"]), _hm_to_min(lk["lock_to"])
+        if lt <= lf: lt += 1440
+        if E < lt and lf < ne: raise HTTPException(409, "SLOT_TAKEN")
+    cost = await _charge_extension(user, b["vip_id"], req.hours)
+    await db.vip_sched.update_one({"id": bid}, {"$set": {"end": _min_to_hm(ne), "lock_end": _min_to_hm(ne + VIP_SCHED_BUFFER)},
+                                                "$inc": {"coins": cost, "hours": req.hours, "extra_hours": req.hours, "extra_coins": cost}})
+    await notify(b["vip_id"], "vs_extended", "Date extended ⏳",
+                 f"{user['name']} added {req.hours}h to your date · new end {_min_to_hm(ne)} · +🪙 {cost}.", {"booking_id": bid}, email=True)
+    return {"end": _min_to_hm(ne), "cost": cost}
+
+@api.post("/vip/book/{bid}/extend")
+async def vip_book_extend(bid: str, req: VipExtendReq, user=Depends(get_current_user)):
+    b = await db.date_bookings.find_one({"id": bid, "vip": True}, {"_id": 0})
+    if not b or b["from_id"] != user["id"]:
+        raise HTTPException(404, "Not found")
+    start = _pdt(b["scheduled_at"])
+    start = start if start and start.tzinfo else (start.replace(tzinfo=timezone.utc) if start else None)
+    dur = int(b.get("duration_min") or DATE_SLOT_MINUTES)
+    now = datetime.now(timezone.utc)
+    if b["status"] not in ("escrow", "accepted", "confirmed") or not start or not (start - timedelta(hours=14) <= now < start + timedelta(minutes=dur) + timedelta(hours=14)):
+        raise HTTPException(400, "NOT_IN_PROGRESS")
+    cost = await _charge_extension(user, b["to_id"], req.hours)
+    nd = dur + 60 * req.hours
+    sf = b.get("slot_from") or b["scheduled_at"][11:16]
+    await db.date_bookings.update_one({"id": bid}, {"$set": {"duration_min": nd, "slot_from": sf, "slot_to": _min_to_hm(_hm_to_min(sf) + nd)},
+                                                    "$inc": {"coins": cost, "extra_hours": req.hours, "extra_coins": cost}})
+    await notify(b["to_id"], "vs_extended", "Date extended ⏳", f"{user['name']} added {req.hours}h to your VIP date · +🪙 {cost}.", {"booking_id": bid}, email=True)
+    return {"duration_min": nd, "cost": cost}
+
 # ---- Reschedule a pending request ----
 class VipRescheduleReq(BaseModel):
     date: str
@@ -4096,13 +4246,13 @@ async def vs_reschedule(bid: str, req: VipRescheduleReq, user=Depends(get_curren
     if _vs_conflict(cs, ce, active, ref_start=ref_start):
         raise HTTPException(409, "SLOT_TAKEN")
     await _vs_extra_checks(vip_id, req.date, cs, ce)
-    if "extra_hours" in b and (ce - cs) // 60 - 1 != b["extra_hours"]:
+    if "hours" in b and (ce - cs) // 60 != b["hours"]:
         raise HTTPException(400, "DURATION_CHANGED")
     now = datetime.now(timezone.utc).isoformat()
     await db.vip_sched.update_one({"id": bid}, {"$set": {
         "date": req.date, "start": req.start, "end": req.end,
         "lock_start": _min_to_hm(max(0, cs - VIP_SCHED_BUFFER)), "lock_end": _min_to_hm(ce + VIP_SCHED_BUFFER),
-        "scheduled_at": f"{req.date}T{req.start}:00", "rescheduled_at": now, "reminder_30_sent": False}})
+        "scheduled_at": f"{req.date}T{req.start}:00", "rescheduled_at": now, "reminder_24_sent": False, "reminder_1h_sent": False}})
     await notify(vip_id, "vs_rescheduled", "Date request updated 🔁",
                  f"{user['name']} proposed a new time: {req.date} · {req.start}–{req.end}. Confirm or decline in VIP Bookings.",
                  {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
@@ -4139,14 +4289,16 @@ async def _vs_tick():
     for b in conf:
         start_dt = _vs_start_dt(b)
         end_dt = _vs_end_dt(b)
-        # 30-min reminder
-        if start_dt and not b.get("reminder_30_sent") and (start_dt - timedelta(minutes=30)) <= now < start_dt:
-            when = f"{b['date']} · {b['start']}–{b['end']} ({b.get('tz', 'UTC')})"
-            for uid in (b["vip_id"], b["requester_id"]):
-                await notify(uid, "vs_reminder", "Your date starts in 30 minutes ⏰",
-                             f"Reminder: your date is at {when}. Get ready!", {"booking_id": b["id"]},
-                             email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
-            await db.vip_sched.update_one({"id": b["id"]}, {"$set": {"reminder_30_sent": True}})
+        # day-before and 1-hour reminders (in-app + email) to both sides
+        for flag, ahead, title in (("reminder_24_sent", timedelta(hours=24), "Your VIP date is tomorrow 📅"),
+                                   ("reminder_1h_sent", timedelta(hours=1), "Your VIP date starts in 1 hour ⏰")):
+            if start_dt and not b.get(flag) and (start_dt - ahead) <= now < start_dt:
+                when = f"{b['date']} · {b['start']}–{b['end']} ({b.get('tz', 'UTC')})"
+                for uid in (b["vip_id"], b["requester_id"]):
+                    await notify(uid, "vs_reminder", title, f"Reminder: your date is at {when}.", {"booking_id": b["id"]},
+                                 email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
+                await db.vip_sched.update_one({"id": b["id"]}, {"$set": {flag: True}})
+                b[flag] = True
         # auto-complete
         if end_dt and end_dt <= now:
             coins = int(b.get("coins") or 0)

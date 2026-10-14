@@ -10,10 +10,19 @@ import DateReportForm, { DateStartedNote, ReportReplyBlock } from "./DateReportF
 import { MapsLink } from "./AddressPicker";
 import AddressPicker from "./AddressPicker";
 import AddToCalendar from "./AddToCalendar";
+import ExtendDateButton from "./ExtendDateButton";
+
 import { SectionTitle, EmptyLine } from "./DatesUI";
 import CountdownBadge from "./CountdownBadge";
 import LiveLocation from "./LiveLocation";
 import { matchesFilter } from "../lib/dateFilters";
+
+const vipEnd = (b) => new Date(new Date(b.scheduled_at).getTime() + (b.duration_min || 150) * 60000);
+const hm = (d) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function VipTimeRange({ b, lang }) {
+  const s = new Date(b.scheduled_at), e = vipEnd(b);
+  return <span data-testid={`date-time-range-${b.id}`}>{s.toLocaleDateString()} · {t("bk_start", lang)} {hm(s)} → {t("bk_finish", lang)} {hm(e)}{e.toDateString() !== s.toDateString() ? " (+1)" : ""}</span>;
+}
 
 const STATUS_MAP = { escrow: "status_escrow", accepted: "status_accepted", confirmed: "status_confirmed", released: "status_released", cancelled: "status_cancelled", declined: "status_declined" };
 const STATUS_COLOR = { escrow: "bg-amber-500/15 text-amber-300 border-amber-500/30", accepted: "bg-sky-500/15 text-sky-300 border-sky-500/30", confirmed: "bg-violet-500/15 text-violet-300 border-violet-500/30", released: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", cancelled: "bg-red-500/15 text-red-300 border-red-500/30", declined: "bg-red-500/15 text-red-300 border-red-500/30" };
@@ -145,7 +154,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
       {b.photo_url && <img src={fileUrl(b.photo_url)} alt="" className="w-full sm:w-24 h-24 rounded-xl object-cover"/>}
       <div className="flex-1">
         <div className="flex items-center gap-2 mb-1"><CalendarHeart size={14} className="text-rose-400"/><span className="font-serif-luxe text-lg">{b.venue}</span></div>
-        <div className="text-xs text-slate-400 flex items-center gap-2"><Clock size={11}/> {new Date(b.scheduled_at).toLocaleString()} · {b.city}</div>
+        <div className="text-xs text-slate-400 flex items-center gap-2"><Clock size={11}/> {b.vip ? <VipTimeRange b={b} lang={lang} /> : new Date(b.scheduled_at).toLocaleString()} · {b.city}</div>
         {(b.address || b.lat || b.postal_code) && <div className="text-xs text-slate-400 mt-0.5">{[b.address, b.postal_code, b.country].filter(Boolean).join(" · ")} <MapsLink loc={b} testid={`date-maps-link-${b.id}`} /></div>}
         {b.meet?.address && <div className="text-xs text-emerald-300 mt-0.5" data-testid={`meet-location-${b.id}`}>📍 {t("meet_location", lang)}: {[b.meet.address, b.meet.postal_code, b.meet.country].filter(Boolean).join(" · ")} <MapsLink loc={{ ...b.meet, venue: b.venue }} testid={`meet-maps-link-${b.id}`} /></div>}
         <div className="mt-1 flex items-center gap-2 flex-wrap">
@@ -156,8 +165,9 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
           {b.release_at && b.status === "confirmed" && <span className="text-xs text-slate-500">🔓 {t("unlocks_at", lang)}: {new Date(b.release_at).toLocaleString()}</span>}
         </div>
         {["accepted", "confirmed"].includes(b.status) && (
-          <div className="mt-2"><AddToCalendar id={b.id} title={`GiftsDates: ${b.selected_activity || "Date"} · ${b.venue}`}
-            place={[b.venue, b.address, b.city, b.country].filter(Boolean).join(", ")} start={new Date(b.scheduled_at)} /></div>
+          <div className="mt-2 flex flex-wrap gap-2"><AddToCalendar id={b.id} title={`GiftsDates: ${b.selected_activity || "Date"} · ${b.venue}`}
+            place={[b.venue, b.address, b.city, b.country].filter(Boolean).join(", ")} start={new Date(b.scheduled_at)} end={b.duration_min ? vipEnd(b) : undefined} />
+            {b.vip && !isIncoming && started && Date.now() < vipEnd(b).getTime() && <ExtendDateButton id={b.id} url={`/vip/book/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={load} />}</div>
         )}
         {["accepted", "confirmed"].includes(b.status) && <div className="mt-2"><LiveLocation kind="booking" id={b.id} otherName={isIncoming ? b.from_name : b.to_name}
           venue={b.lat != null && b.lng != null ? `${b.lat},${b.lng}` : [b.venue, b.address, b.city, b.country].filter(Boolean).join(", ")} /></div>}

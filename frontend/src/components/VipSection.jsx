@@ -7,9 +7,8 @@ import { useApp } from "../context/AppContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import AddressPicker from "./AddressPicker";
-import { PRICE_KEYS, svcLabel, placeLabel, priceLabel, extraLabel, extraPrice } from "../lib/vipCatalog";
+import { PRICE_KEYS, svcLabel, placeLabel, priceLabel, extraLabel, extraPrice, EXTRA_HOUR_MIN } from "../lib/vipCatalog";
 import ExtraHoursStepper from "./ExtraHoursStepper";
-import VipScheduleBookModal from "./VipScheduleBookModal";
 import { t } from "../lib/i18n";
 
 export default function VipSection({ userId, name, preview }) {
@@ -21,7 +20,6 @@ export default function VipSection({ userId, name, preview }) {
   const [loc, setLoc] = useState({});
   const [busy, setBusy] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
-  const [schedOpen, setSchedOpen] = useState(false);
   const [extraHours, setExtraHours] = useState(0);
 
   const unlockSection = async () => {
@@ -80,7 +78,7 @@ export default function VipSection({ userId, name, preview }) {
   }
 
   const v = data.vip || {};
-  const priceFor = (k) => v.prices?.[k] || 0;
+  const priceFor = (k) => Math.max(EXTRA_HOUR_MIN, Number(v.prices?.[k]) || 0);
   const hasPlaces = (v.places?.length || 0) > 0;
 
   const extra = extraPrice(v.prices);
@@ -107,6 +105,7 @@ export default function VipSection({ userId, name, preview }) {
         scheduled_at: `${slot.date}T${slot.from}:00`,
         coins,
         extra_hours: extraHours,
+        vip_length: { hour: 1, h2: 2, h3: 3 }[durKey],
       });
       toast.success(t("vip_booked_toast", lang));
       setSlot(null); setPlace(null); setLoc({}); setExtraHours(0);
@@ -198,12 +197,6 @@ export default function VipSection({ userId, name, preview }) {
         </div>
       )}
 
-      <VipScheduleBookModal
-        open={schedOpen}
-        onOpenChange={setSchedOpen}
-        target={{ id: userId, name: data.name || name, city: data.city }}
-        defaultCoins={v.date_price || (v.prices && Object.values(v.prices).find((x) => x > 0)) || undefined}
-      />
 
       <Dialog open={!!slot} onOpenChange={(o) => { if (!o) { setSlot(null); setPlace(null); setLoc({}); setExtraHours(0); } }}>
         <DialogContent className="bg-[#161018] border-white/10 text-white max-w-sm max-h-[85vh] overflow-y-auto" data-testid="vip-book-dialog">
@@ -229,7 +222,7 @@ export default function VipSection({ userId, name, preview }) {
             </div>
           )}
 
-          <ExtraHoursStepper label={extraLabel(lang)} value={extraHours} onChange={setExtraHours} price={extra} testid="vip-book-extra-hours" />
+          <ExtraHoursStepper label={extraLabel(lang)} each={t("bk_each", lang)} value={extraHours} onChange={setExtraHours} price={extra} testid="vip-book-extra-hours" />
           <div className="text-xs font-semibold text-amber-200">{t("vip_book_btn", lang)}</div>
           <div className="grid grid-cols-2 gap-2">
             {PRICE_KEYS.map((p) => priceFor(p.k) > 0 && (

@@ -3,13 +3,13 @@ import { CalendarClock } from "lucide-react";
 import { Button } from "./ui/button";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
-import VipScheduleBookModal from "./VipScheduleBookModal";
+import VipDateBookModal from "./VipDateBookModal";
 
 // Standalone booking entry for a VIP's availability calendar.
 // Rendered independently of the private VIP section lock so ANY member can
 // request an exact time slot from a VIP who has published availability.
 export default function ProfileScheduleCard({ profile }) {
-  const { user, meta } = useApp();
+  const { user } = useApp();
   const [days, setDays] = useState(null); // null=loading, []=none
   const [open, setOpen] = useState(false);
 
@@ -46,11 +46,10 @@ export default function ProfileScheduleCard({ profile }) {
         </Button>
       </div>
 
-      <VipScheduleBookModal
+      <VipDateBookModal
         open={open}
         onOpenChange={setOpen}
         target={{ id: profile.id, name: profile.name, city: profile.city }}
-        defaultCoins={profile.date_price || meta?.date_min_coins || undefined}
       />
     </div>
   );

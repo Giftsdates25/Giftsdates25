@@ -1,12 +1,12 @@
 import React from "react";
 import { Minus, Plus } from "lucide-react";
 
-export default function ExtraHoursStepper({ label, value, onChange, price, testid = "extra-hours" }) {
+export default function ExtraHoursStepper({ label, each = "each", value, onChange, price, testid = "extra-hours" }) {
   return (
     <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3" data-testid={testid}>
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs text-amber-200">
-          {label} <span className="text-slate-400">· 🪙 {price} each</span>
+          {label} <span className="text-slate-400">· 🪙 {price} {each}</span>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" data-testid={`${testid}-minus`} disabled={value <= 0} onClick={() => onChange(Math.max(0, value - 1))}

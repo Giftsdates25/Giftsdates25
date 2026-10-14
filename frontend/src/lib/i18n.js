@@ -1,3 +1,4 @@
+import { VS_T } from "./i18n_vipsched";
 // GiftsDates i18n — worldwide language support
 import WORLD_LANGUAGES from "./languages.json";
 import GENERATED from "./locales";
@@ -143,6 +144,7 @@ export const ZODIAC_EMOJI = {
 };
 
 const T = {
+  ...VS_T,
   av_new_hint: { en: "Set a weekly schedule and/or pick specific days. Add as many time ranges per day as you like — people inviting you can choose any start time that fits." },
   av_weekly: { en: "Weekly schedule" },
   av_weekly_hint: { en: "Repeats every week. Specific days below override the weekly hours for that date." },

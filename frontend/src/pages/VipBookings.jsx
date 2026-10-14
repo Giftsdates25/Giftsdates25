@@ -7,8 +7,11 @@ import { Calendar, Clock, Check, X, Crown, Loader2, CalendarClock, Inbox, Send }
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
-import VipScheduleManager from "../components/VipScheduleManager";
-import VipScheduleBookModal from "../components/VipScheduleBookModal";
+import VipAvailabilityEditor from "../components/VipAvailabilityEditor";
+import VipDateBookModal from "../components/VipDateBookModal";
+import AddToCalendar from "../components/AddToCalendar";
+import ExtendDateButton from "../components/ExtendDateButton";
+import { t } from "../lib/i18n";
 import DateBookingList from "../components/DateBookingList";
 import CancelledDates from "../components/CancelledDates";
 
@@ -34,9 +37,20 @@ function Avatar({ card }) {
   );
 }
 
-function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, busyId }) {
+const bookingTimes = (b) => {
+  const start = new Date(`${b.date}T${b.start}:00`);
+  const [sh, sm] = b.start.split(":").map(Number), [eh, em] = b.end.split(":").map(Number);
+  let mins = eh * 60 + em - (sh * 60 + sm); if (mins <= 0) mins += 1440;
+  return { start, end: new Date(start.getTime() + mins * 60000) };
+};
+
+function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onReload, busyId }) {
+  const { lang } = useApp();
   const card = who === "incoming" ? b.requester : b.vip_card;
   const loading = busyId === b.id;
+  const { start, end } = bookingTimes(b);
+  const now = Date.now();
+  const live = b.status === "confirmed" && now >= start.getTime() && now < end.getTime();
   return (
     <div className="glass rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4" data-testid={`vs-booking-${b.id}`}>
       <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -47,12 +61,15 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, bus
             <Calendar size={12} /> {fmtDay(b.date)}
           </div>
           <div className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5 font-mono-num">
-            <Clock size={12} /> {b.start}–{b.end} <span className="text-slate-600">·</span> {b.tz}
+            <Clock size={12} /> <span data-testid={`vs-booking-time-${b.id}`}>{t("bk_start", lang)} {b.start} → {t("bk_finish", lang)} {b.end}{end.getDate() !== start.getDate() ? " (+1)" : ""}</span> <span className="text-slate-600">·</span> {b.tz}
+            {live && <span className="ms-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300" data-testid={`vs-live-${b.id}`}>{t("ext_in_progress", lang)}</span>}
           </div>
           {b.activity ? <div className="text-xs text-slate-300 mt-0.5 truncate">{b.activity}</div> : null}
         </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+        {b.status === "confirmed" && <AddToCalendar id={b.id} title={`GiftsDates VIP: ${b.activity || card?.name || "Date"}`} place={b.venue || b.activity} start={start} end={end} link="/vip-bookings" />}
+        {who === "outgoing" && live && <ExtendDateButton id={b.id} url={`/vip/schedule/bookings/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={onReload} />}
         <div className="text-right me-1">
           <div className="text-amber-300 font-mono-num text-sm">🪙 {b.coins}</div>
           <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full border capitalize ${STATUS_BADGE[b.status]}`}>{b.status}</span>
@@ -60,22 +77,22 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, bus
         {who === "incoming" && b.status === "pending" && (
           <>
             <Button data-testid={`vs-confirm-${b.id}`} size="sm" disabled={loading} onClick={() => onConfirm(b.id)} className="bg-emerald-600 hover:bg-emerald-500 text-white border-0 h-9">
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <><Check size={14} className="me-1" /> Confirm</>}
+              {loading ? <Loader2 size={14} className="animate-spin" /> : <><Check size={14} className="me-1" /> {t("vb_confirm", lang)}</>}
             </Button>
             <Button data-testid={`vs-decline-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onDecline(b.id)} className="bg-white/5 border-rose-500/40 text-rose-300 hover:bg-rose-500/10 h-9">
-              <X size={14} className="me-1" /> Decline
+              <X size={14} className="me-1" /> {t("vb_decline", lang)}
             </Button>
           </>
         )}
         {who === "incoming" && b.status === "confirmed" && (
-          <Button data-testid={`vs-cancel-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onCancel(b.id)} className="bg-white/5 border-white/15 text-slate-300 hover:bg-white/10 h-9">Cancel</Button>
+          <Button data-testid={`vs-cancel-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onCancel(b.id)} className="bg-white/5 border-white/15 text-slate-300 hover:bg-white/10 h-9">{t("vb_cancel", lang)}</Button>
         )}
         {who === "outgoing" && (b.status === "pending" || b.status === "confirmed") && (
           <>
             {b.status === "pending" && (
-              <Button data-testid={`vs-reschedule-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onReschedule(b)} className="bg-white/5 border-amber-500/40 text-amber-300 hover:bg-amber-500/10 h-9">Reschedule</Button>
+              <Button data-testid={`vs-reschedule-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onReschedule(b)} className="bg-white/5 border-amber-500/40 text-amber-300 hover:bg-amber-500/10 h-9">{t("vb_reschedule", lang)}</Button>
             )}
-            <Button data-testid={`vs-cancel-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onCancel(b.id)} className="bg-white/5 border-white/15 text-slate-300 hover:bg-white/10 h-9">Cancel</Button>
+            <Button data-testid={`vs-cancel-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onCancel(b.id)} className="bg-white/5 border-white/15 text-slate-300 hover:bg-white/10 h-9">{t("vb_cancel", lang)}</Button>
           </>
         )}
       </div>
@@ -93,7 +110,7 @@ function Empty({ icon: Icon, text }) {
 }
 
 export default function VipBookings() {
-  const { user, refreshUser } = useApp();
+  const { refreshUser, lang } = useApp();
   const nav = useNavigate();
   const [sched, setSched] = useState(null);
   const [mine, setMine] = useState([]);
@@ -118,9 +135,9 @@ export default function VipBookings() {
     setBusyId(id);
     try { await fn(); await load(); await refreshUser(); } finally { setBusyId(null); }
   };
-  const confirm = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/confirm`); toast.success("Date confirmed"); }, id);
-  const decline = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/decline`); toast.success("Date declined — coins refunded"); }, id);
-  const cancel = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/cancel`); toast.success("Booking cancelled"); }, id);
+  const confirm = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/confirm`); toast.success(t("vb_confirmed_toast", lang)); }, id);
+  const decline = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/decline`); toast.success(t("vb_declined_toast", lang)); }, id);
+  const cancel = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/cancel`); toast.success(t("vb_cancelled_toast", lang)); }, id);
 
   if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-slate-400"><Loader2 className="animate-spin" /></div>;
 
@@ -135,10 +152,10 @@ export default function VipBookings() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-1">
-        <h1 className="font-serif-luxe text-3xl gold-text flex items-center gap-2"><Crown size={26} className="text-amber-300" /> VIP Bookings</h1>
+        <h1 className="font-serif-luxe text-3xl gold-text flex items-center gap-2"><Crown size={26} className="text-amber-300" /> {t("vb_title", lang)}</h1>
         {pending.length > 0 && <Badge className="bg-rose-500 text-white border-0 rounded-full" data-testid="vs-pending-badge">🔔 {pending.length}</Badge>}
       </div>
-      <p className="text-sm text-slate-400 mb-6">Control your availability and manage every date request in one place.</p>
+      <p className="text-sm text-slate-400 mb-6">{t("vb_intro", lang)}</p>
 
       <section className="mb-8" data-testid="vip-escrow-dates">
         <h2 className="font-serif-luxe text-xl mb-3 flex items-center gap-2"><Crown size={18} className="text-amber-300" /> VIP Dates</h2>
@@ -149,34 +166,34 @@ export default function VipBookings() {
         <Tabs defaultValue="requests" className="w-full">
           <TabsList className="bg-white/5 border border-white/10">
             <TabsTrigger value="requests" data-testid="vs-tab-requests" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">
-              Requests {pending.length > 0 && <span className="ml-1.5 text-[10px] bg-rose-500 text-white rounded-full px-1.5">{pending.length}</span>}
+              {t("vb_requests", lang)} {pending.length > 0 && <span className="ml-1.5 text-[10px] bg-rose-500 text-white rounded-full px-1.5">{pending.length}</span>}
             </TabsTrigger>
-            <TabsTrigger value="confirmed" data-testid="vs-tab-confirmed" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">Confirmed</TabsTrigger>
-            <TabsTrigger value="past" data-testid="vs-tab-past" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">Past</TabsTrigger>
-            <TabsTrigger value="availability" data-testid="vs-tab-availability" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">Availability</TabsTrigger>
-            <TabsTrigger value="mine" data-testid="vs-tab-mine" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">My Requests</TabsTrigger>
+            <TabsTrigger value="confirmed" data-testid="vs-tab-confirmed" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_confirmed", lang)}</TabsTrigger>
+            <TabsTrigger value="past" data-testid="vs-tab-past" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_past", lang)}</TabsTrigger>
+            <TabsTrigger value="availability" data-testid="vs-tab-availability" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_availability", lang)}</TabsTrigger>
+            <TabsTrigger value="mine" data-testid="vs-tab-mine" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_mine", lang)}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="requests" className="mt-5 space-y-3">
-            {pending.length === 0 ? <Empty icon={Inbox} text="No pending date requests." /> :
+            {pending.length === 0 ? <Empty icon={Inbox} text={t("vb_none_pending", lang)} /> :
               pending.map((b) => <BookingCard key={b.id} b={b} who="incoming" onConfirm={confirm} onDecline={decline} onCancel={cancel} busyId={busyId} />)}
           </TabsContent>
           <TabsContent value="confirmed" className="mt-5 space-y-3">
-            {confirmed.length === 0 ? <Empty icon={CalendarClock} text="No confirmed dates yet." /> :
+            {confirmed.length === 0 ? <Empty icon={CalendarClock} text={t("vb_none_confirmed", lang)} /> :
               confirmed.map((b) => <BookingCard key={b.id} b={b} who="incoming" onConfirm={confirm} onDecline={decline} onCancel={cancel} busyId={busyId} />)}
           </TabsContent>
           <TabsContent value="past" className="mt-5 space-y-3">
-            {past.length === 0 ? <Empty icon={Calendar} text="No past bookings." /> :
+            {past.length === 0 ? <Empty icon={Calendar} text={t("vb_none_past", lang)} /> :
               past.map((b) => <BookingCard key={b.id} b={b} who="incoming" busyId={busyId} />)}
           </TabsContent>
           <TabsContent value="availability" className="mt-5">
-            <VipScheduleManager blocks={sched?.blocks || []} onChanged={load} />
+            <VipAvailabilityEditor blocks={sched?.blocks || []} onChanged={load} />
           </TabsContent>
           <TabsContent value="mine" className="mt-5 space-y-3">
-            {mine.length === 0 ? <Empty icon={Send} text="You haven't requested any VIP dates yet." /> : (
+            {mine.length === 0 ? <Empty icon={Send} text={t("vb_none_mine", lang)} /> : (
               <>
-                {minePending.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} busyId={busyId} />)}
-                {mineConfirmed.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} busyId={busyId} />)}
+                {minePending.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />)}
+                {mineConfirmed.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />)}
                 {minePast.map((b) => <BookingCard key={b.id} b={b} who="outgoing" busyId={busyId} />)}
               </>
             )}
@@ -196,15 +213,16 @@ export default function VipBookings() {
           </div>
           <h2 className="font-serif-luxe text-xl mb-3 flex items-center gap-2"><Send size={18} className="text-rose-300" /> My date requests</h2>
           <div className="space-y-3">
-            {mine.length === 0 ? <Empty icon={Send} text="You haven't requested any VIP dates yet." /> :
-              mine.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} busyId={busyId} />)}
+            {mine.length === 0 ? <Empty icon={Send} text={t("vb_none_mine", lang)} /> :
+              mine.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />)}
           </div>
         </div>
       )}
 
       {reschedule && (
-        <VipScheduleBookModal
+        <VipDateBookModal
           open={!!reschedule}
+          rescheduleHours={reschedule.hours}
           onOpenChange={(o) => { if (!o) setReschedule(null); }}
           target={{ id: reschedule.vip_id, name: reschedule.vip_card?.name || "VIP" }}
           rescheduleId={reschedule.id}

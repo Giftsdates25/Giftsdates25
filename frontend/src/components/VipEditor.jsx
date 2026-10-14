@@ -173,7 +173,7 @@ export default function VipEditor() {
       const inhGenders = sep ? (mp.genders && mp.genders.length ? mp.genders : (mp.gender ? [mp.gender] : [])) : sepGenders;
       const payload = {
         services, services_note: servicesNote, places, client_wants: wants,
-        price_hour: Number(prices.hour) || 0, price_2h: Number(prices.h2) || 0, price_3h: Number(prices.h3) || 0,
+        price_hour: Math.max(EXTRA_HOUR_MIN, Number(prices.hour) || 0), price_2h: Math.max(EXTRA_HOUR_MIN, Number(prices.h2) || 0), price_3h: Math.max(EXTRA_HOUR_MIN, Number(prices.h3) || 0),
         price_extra_hour: Math.max(EXTRA_HOUR_MIN, Number(prices.extra) || 0),
         availability: slots, published: isVip ? published : false,
         nickname, post_mode: postMode,
@@ -373,7 +373,8 @@ export default function VipEditor() {
           {PRICE_KEYS.map((p) => (
             <div key={p.k}>
               <label className="text-xs text-slate-400">{priceLabel(p.k, lang)}</label>
-              <Input data-testid={`vip-price-${p.k}`} type="number" min="0" step="50" value={prices[p.k] ?? ""} onChange={(e) => setPrices({ ...prices, [p.k]: e.target.value })} className="bg-white/5 border-white/10 mt-1 font-mono-num" />
+              <Input data-testid={`vip-price-${p.k}`} type="number" min={EXTRA_HOUR_MIN} step="50" value={prices[p.k] ?? ""} placeholder={`min ${EXTRA_HOUR_MIN}`} onChange={(e) => setPrices({ ...prices, [p.k]: e.target.value })}
+                onBlur={() => setPrices((x) => ({ ...x, [p.k]: Math.max(EXTRA_HOUR_MIN, Number(x[p.k]) || 0) }))} className="bg-white/5 border-white/10 mt-1 font-mono-num" />
             </div>
           ))}
           <div>
