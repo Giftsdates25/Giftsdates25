@@ -45,3 +45,5 @@ React (CRA/craco) + FastAPI (server.py, ~4.9k lines) + MongoDB. JWT email/passwo
 - VIP hidden -> Premium (2026-10-14): non-VIP viewers see hidden VIP members as Premium (is_premium=true). VIP members without premium_until now correctly show the VIP badge on Browse (lite/rest buckets use is_vip). iteration_13: 100%.
 - 'Show VIP on my main profile' row rendered only for active VIP members (VipEditor isVip) (2026-10-14).
 - VIP booking calendar v2 (2026-10-14): VipScheduleBookModal uses day + 1h/2h/3h duration + clock TimeChooser (any 15-min start); backend enforces VIP_DURATIONS, VIP window, 15-min buffer vs VIP bookings AND the VIP's normal dates (_vs_extra_checks); /vip/schedule/{id}/slots returns durations, windows, taken. iteration_14: 100%.
+
+- Re-imported from GiftsDates24 repo as-is (2026-06): env re-provisioned (JWT, LLM key, Stripe test key, managed email, ADMIN_EMAILS). Admin giftsdates@gmail.com + test user created (see test_credentials.md). Smoke test iteration_15: 100% backend + frontend.
