@@ -47,3 +47,5 @@ React (CRA/craco) + FastAPI (server.py, ~4.9k lines) + MongoDB. JWT email/passwo
 - VIP booking calendar v2 (2026-10-14): VipScheduleBookModal uses day + 1h/2h/3h duration + clock TimeChooser (any 15-min start); backend enforces VIP_DURATIONS, VIP window, 15-min buffer vs VIP bookings AND the VIP's normal dates (_vs_extra_checks); /vip/schedule/{id}/slots returns durations, windows, taken. iteration_14: 100%.
 
 - Re-imported from GiftsDates24 repo as-is (2026-06): env re-provisioned (JWT, LLM key, Stripe test key, managed email, ADMIN_EMAILS). Admin giftsdates@gmail.com + test user created (see test_credentials.md). Smoke test iteration_15: 100% backend + frontend.
+- Stripe (2026-06): claimable Emergent Stripe sandbox provisioned; existing checkout/webhook code works (iteration_16 100%).
+- VIP extra hours (2026-06): VIP sets 'Extra hour' price (min 250 coins, default 250) in Coins to meet; clients add unlimited extra hours in price-list booking (/vip/book extra_hours) and calendar booking (any whole-hour duration, each hour after the 1st costs the extra price). Charged server-side. iteration_17 100%.

@@ -4097,7 +4097,7 @@ async def vs_reschedule(bid: str, req: VipRescheduleReq, user=Depends(get_curren
         raise HTTPException(409, "SLOT_TAKEN")
     await _vs_extra_checks(vip_id, req.date, cs, ce)
     if "extra_hours" in b and (ce - cs) // 60 - 1 != b["extra_hours"]:
-        raise HTTPException(400, "SAME_DURATION")
+        raise HTTPException(400, "DURATION_CHANGED")
     now = datetime.now(timezone.utc).isoformat()
     await db.vip_sched.update_one({"id": bid}, {"$set": {
         "date": req.date, "start": req.start, "end": req.end,

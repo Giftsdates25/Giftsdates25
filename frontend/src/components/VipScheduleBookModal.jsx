@@ -81,7 +81,7 @@ export default function VipScheduleBookModal({ open, onOpenChange, target, defau
         d === "SLOT_TAKEN" ? "That time was just taken. Please pick another slot."
           : d === "TIME_UNAVAILABLE" ? "This time is not available."
           : d === "BAD_DURATION" ? "Choose a whole number of hours."
-          : d === "SAME_DURATION" ? "Keep the same length (extra hours) when rescheduling."
+          : d === "DURATION_CHANGED" ? "Keep the same length (extra hours) when rescheduling."
           : d === "CANNOT_BOOK_SELF" ? "You cannot book yourself."
           : d === "NOT_PENDING" ? "This booking can no longer be rescheduled."
           : d === "Insufficient coins" ? "Not enough coins."
