@@ -7,7 +7,7 @@ import { t } from "../lib/i18n";
 
 const fmt = (m) => `${minHm(m)}${m >= 1440 ? " +1" : ""}`;
 
-export default function TimeChooser({ day, wins = [], taken = [], value, onChange, testid = "time-chooser", slot = SLOT, note }) {
+export default function TimeChooser({ day, wins = [], taken = [], value, onChange, testid = "time-chooser", slot = SLOT, note, vertical = false }) {
   const { lang } = useApp();
   const minStart = minStartFor(day);
   const starts = useMemo(() => freeStarts(wins, taken, minStart, slot), [JSON.stringify(wins), JSON.stringify(taken), minStart, slot]); // eslint-disable-line
@@ -21,9 +21,9 @@ export default function TimeChooser({ day, wins = [], taken = [], value, onChang
     </div>
   );
   return (
-    <div className="mt-2 grid sm:grid-cols-[auto_1fr] gap-4 items-start" data-testid={testid}>
+    <div className={`mt-2 grid gap-4 ${vertical ? "justify-items-center" : "sm:grid-cols-[auto_1fr] items-start"}`} data-testid={testid}>
       <ClockTimePicker starts={starts} value={value} onChange={onChange} />
-      <div className="space-y-3 text-xs">
+      <div className="space-y-3 text-xs w-full">
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-3" data-testid={`${testid}-summary`}>
           <div className="flex justify-between"><span className="text-slate-400">{t("clock_starts", lang)}</span><b className="font-mono-num text-white">{value == null ? "—" : fmt(value)}</b></div>
           <div className="flex justify-between mt-1"><span className="text-slate-400">{t("clock_ends", lang)}</span><b className="font-mono-num text-white">{value == null ? "—" : fmt(value + slot)}</b></div>
