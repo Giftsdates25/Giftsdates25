@@ -3,7 +3,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Calendar, Clock, Loader2, Hourglass, Sparkles } from "lucide-react";
+import { Calendar, Clock, Loader2, Hourglass, Sparkles, MapPin } from "lucide-react";
+import AddressPicker from "./AddressPicker";
+import { placeLabel } from "../lib/vipCatalog";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
@@ -47,6 +49,8 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
   const [length, setLength] = useState(1);
   const [extra, setExtra] = useState(0);
   const [activity, setActivity] = useState("");
+  const [place, setPlace] = useState(null);
+  const [loc, setLoc] = useState({});
   const [busy, setBusy] = useState(false);
   const isReschedule = !!rescheduleId;
   const dur = 60 * (length + extra);
@@ -63,7 +67,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
   useEffect(() => {
     if (!open) return;
     const h = rescheduleHours || 1;
-    setStartMin(null); setLength(Math.min(3, h)); setExtra(Math.max(0, h - 3)); setActivity(""); load();
+    setStartMin(null); setLength(Math.min(3, h)); setExtra(Math.max(0, h - 3)); setActivity(""); setPlace(null); setLoc({}); load();
   }, [open, load, rescheduleHours]);
 
   const dayObj = (data.days || []).find((d) => d.date === day);
@@ -74,6 +78,9 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
 
   const submit = async () => {
     if (!slot) { toast.error(t("bk_pick_slot_err", lang)); return; }
+    const places = data.places || [];
+    if (!isReschedule && places.length && !place) { toast.error(t("vip_select_place_first", lang)); return; }
+    if (!isReschedule && place && place !== "own" && !loc.address) { toast.error(t("vip_addr_required", lang)); return; }
     if (!isReschedule && ((user?.coins || 0) + (user?.withdrawable || 0)) < total) { toast.error(t("not_enough_coins", lang)); return; }
     setBusy(true);
     try {
@@ -81,7 +88,8 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
         await api.post(`/vip/schedule/bookings/${rescheduleId}/reschedule`, { date: day, start: slot.start, end: slot.end });
         toast.success(t("bk_resched_sent", lang));
       } else {
-        await api.post(`/vip/schedule/${target.id}/book`, { date: day, start: slot.start, end: slot.end, length, activity, venue: activity, tz: dayObj?.tz });
+        await api.post(`/vip/schedule/${target.id}/book`, { date: day, start: slot.start, end: slot.end, length, activity, venue: activity || (place ? placeLabel(place, lang) : ""), tz: dayObj?.tz,
+          place, ...(place && place !== "own" ? { address: loc.address || "", city: loc.city || "", postal_code: loc.postal_code || "", country: loc.country || "", lat: loc.lat ?? null, lng: loc.lng ?? null } : {}) });
         toast.success(t("bk_sent", lang));
       }
       await refreshUser(); onDone?.(); onOpenChange(false);
@@ -144,6 +152,19 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
                 <TimeChooser key={`${day}-${dur}`} vertical day={day} wins={dayObj?.windows || []} taken={dayObj?.taken || []} slot={dur}
                   value={startMin} onChange={setStartMin} testid="vs-book-time" note={null} />
               </Step>
+              {!isReschedule && (data.places || []).length > 0 && (
+                <Step n={++n} icon={MapPin} title={t("bk_where", lang)} testid="vs-book-step-place">
+                  <div className="space-y-1.5" data-testid="vs-book-places">
+                    {data.places.map((pv) => (
+                      <button key={pv} type="button" onClick={() => setPlace(pv)} data-testid={`vs-book-place-${pv}`} className={rowCls(place === pv)}>
+                        <span>{pv === "own" ? t("place_vip", lang) : placeLabel(pv, lang)}</span>{place === pv && <span className="h-2 w-2 rounded-full bg-rose-400 shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                  {place === "own" && <p className="mt-2 text-[11px] text-sky-300 flex items-start gap-1" data-testid="vs-book-own-note"><MapPin size={11} className="mt-0.5 shrink-0" /> {t("own_addr_auto", lang)}</p>}
+                  {place && place !== "own" && <div className="mt-2.5" data-testid="vs-book-address"><AddressPicker value={loc} onChange={setLoc} /></div>}
+                </Step>
+              )}
               {!isReschedule && (
                 <Step n={++n} icon={Sparkles} title={t("bk_activity", lang)} testid="vs-book-step-details">
                   <Input data-testid="vs-book-activity" value={activity} onChange={(e) => setActivity(e.target.value)} placeholder={t("bk_activity_ph", lang)} className="bg-white/5 border-white/10" />

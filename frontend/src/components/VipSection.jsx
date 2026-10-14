@@ -209,7 +209,7 @@ export default function VipSection({ userId, name, preview }) {
               <div className="flex flex-wrap gap-2">
                 {v.places.map((pv) => (
                   <button key={pv} data-testid={`vip-book-place-${pv}`} onClick={() => setPlace(pv)}
-                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${place === pv ? "bg-amber-500/20 border-amber-500/50 text-amber-200" : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"}`}>{placeLabel(pv, lang)}</button>
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${place === pv ? "bg-amber-500/20 border-amber-500/50 text-amber-200" : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"}`}>{pv === "own" ? t("place_vip", lang) : placeLabel(pv, lang)}</button>
                 ))}
               </div>
               {place && place !== "own" && (
@@ -218,7 +218,7 @@ export default function VipSection({ userId, name, preview }) {
                   <AddressPicker value={loc} onChange={setLoc} />
                 </div>
               )}
-              {place === "own" && <div className="mt-2 text-[11px] text-sky-300 flex items-start gap-1"><Calendar size={11} className="mt-0.5 shrink-0" /> {t("vip_provider_shares", lang)}</div>}
+              {place === "own" && <div className="mt-2 text-[11px] text-sky-300 flex items-start gap-1"><Calendar size={11} className="mt-0.5 shrink-0" /> {t("own_addr_auto", lang)}</div>}
             </div>
           )}
 

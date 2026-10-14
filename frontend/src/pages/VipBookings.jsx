@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { Calendar, Clock, Check, X, Crown, Loader2, CalendarClock, Inbox, Send, Ban } from "lucide-react";
+import { Calendar, Clock, Check, X, Crown, Loader2, CalendarClock, Inbox, Send, Ban, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
@@ -12,6 +12,8 @@ import VipDateBookModal from "../components/VipDateBookModal";
 import AddToCalendar from "../components/AddToCalendar";
 import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
+import { MapsLink } from "../components/AddressPicker";
+import { placeLabel } from "../lib/vipCatalog";
 import DateBookingList from "../components/DateBookingList";
 import CancelledDates from "../components/CancelledDates";
 
@@ -44,6 +46,19 @@ const bookingTimes = (b) => {
   return { start, end: new Date(start.getTime() + mins * 60000) };
 };
 
+function BookingPlace({ b, lang, who }) {
+  const loc = b.location || {};
+  if (!b.place && !loc.address) return null;
+  return (
+    <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-1.5" data-testid={`vs-booking-place-${b.id}`}>
+      <MapPin size={12} className="text-rose-300" />
+      {b.place && <span className="text-slate-200">{who === "outgoing" && b.place === "own" ? t("place_vip", lang) : placeLabel(b.place, lang)}</span>}
+      {loc.address ? <><span>· {[loc.address, loc.postal_code, loc.city, loc.country].filter(Boolean).join(", ")}</span> <MapsLink loc={loc} testid={`vs-booking-maps-${b.id}`} /></>
+        : b.address_hidden ? <span className="text-amber-300/80">· {t("addr_hidden", lang)}</span> : null}
+    </div>
+  );
+}
+
 function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onReload, busyId }) {
   const { lang } = useApp();
   const card = who === "incoming" ? b.requester : b.vip_card;
@@ -64,11 +79,12 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
             <Clock size={12} /> <span data-testid={`vs-booking-time-${b.id}`}>{t("bk_start", lang)} {b.start} → {t("bk_finish", lang)} {b.end}{end.getDate() !== start.getDate() ? " (+1)" : ""}</span> <span className="text-slate-600">·</span> {b.tz}
             {live && <span className="ms-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300" data-testid={`vs-live-${b.id}`}>{t("ext_in_progress", lang)}</span>}
           </div>
+          <BookingPlace b={b} lang={lang} who={who} />
           {b.activity ? <div className="text-xs text-slate-300 mt-0.5 truncate">{b.activity}</div> : null}
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-        {b.status === "confirmed" && <AddToCalendar id={b.id} title={`GiftsDates VIP: ${b.activity || card?.name || "Date"}`} place={b.venue || b.activity} start={start} end={end} link="/vip-bookings" />}
+        {b.status === "confirmed" && <AddToCalendar id={b.id} title={`GiftsDates VIP: ${b.activity || card?.name || "Date"}`} place={[b.location?.address, b.location?.city].filter(Boolean).join(", ") || b.venue || b.activity} start={start} end={end} link="/vip-bookings" />}
         {who === "outgoing" && live && <ExtendDateButton id={b.id} url={`/vip/schedule/bookings/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={onReload} />}
         <div className="text-right me-1">
           <div className="text-amber-300 font-mono-num text-sm">🪙 {b.coins}</div>

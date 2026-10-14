@@ -2902,6 +2902,7 @@ async def list_dates(user=Depends(get_current_user)):
     incoming = await db.date_bookings.find({"to_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
     for b in outgoing:
         if b.get("vip"):
+            _hide_own_address(b, b["status"] not in ("escrow", "cancelled", "declined"))
             b["extra_hour_price"] = vip_extra_price(await db.users.find_one({"id": b["to_id"]}, {"_id": 0, "vip.prices": 1}) or {})
     return {"outgoing": outgoing, "incoming": incoming}
 
@@ -3678,6 +3679,10 @@ async def vip_book(req: DateBookingReq, user=Depends(get_current_user)):
     if not target:
         raise HTTPException(404, "Recipient not found")
     extra_coins = req.extra_hours * vip_extra_price(target)
+    if req.place == "own":
+        for k, v in _booking_location(target, "own", req).items():
+            setattr(req, k, v if v is not None else ("" if k not in ("lat", "lng") else None))
+        req.city = req.city or target.get("city") or "-"
     if req.vip_length:
         req.coins = vip_total(target, req.vip_length, req.extra_hours)
     else:
@@ -3728,6 +3733,49 @@ class VipSchedBookReq(BaseModel):
     activity: Optional[str] = ""
     venue: Optional[str] = ""
     tz: Optional[str] = None
+    place: Optional[str] = None  # own (VIP's place) | your | other
+    address: str = ""
+    city: str = ""
+    postal_code: str = ""
+    country: str = ""
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+LOC_KEYS = ("address", "city", "postal_code", "country", "lat", "lng")
+
+class VipOwnPlaceReq(BaseModel):
+    address: str = ""
+    city: str = ""
+    postal_code: str = ""
+    country: str = ""
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+@api.get("/vip/own-place")
+async def vip_get_own_place(user=Depends(get_current_user)):
+    return user.get("vip_own_place") or {}
+
+@api.put("/vip/own-place")
+async def vip_set_own_place(req: VipOwnPlaceReq, user=Depends(get_current_user)):
+    loc = {k: (v.strip() if isinstance(v, str) else v) for k, v in req.model_dump().items()}
+    await db.users.update_one({"id": user["id"]}, {"$set": {"vip_own_place": loc}})
+    return loc
+
+def _booking_location(target: dict, place: Optional[str], src) -> dict:
+    """'own' = the VIP's saved address (filled automatically); otherwise the address the client entered."""
+    if place == "own":
+        op = target.get("vip_own_place") or {}
+        return {k: op.get(k) for k in LOC_KEYS}
+    return {k: getattr(src, k, None) for k in LOC_KEYS}
+
+def _hide_own_address(b: dict, visible: bool) -> dict:
+    """The VIP's home address is shown to the client only once the date is confirmed."""
+    if b.get("place") == "own" and not visible:
+        for k in LOC_KEYS:
+            b.pop(k, None)
+        b.pop("location", None)
+        b["address_hidden"] = True
+    return b
 
 def _vs_today():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -3887,7 +3935,7 @@ async def vs_del_availability(aid: str, user=Depends(get_current_user)):
 @api.get("/vip/schedule/{vip_id}/slots")
 async def vs_public_slots(vip_id: str, user=Depends(get_current_user)):
     """Public: bookable slots for a VIP, grouped by date, each tagged with a visual state."""
-    target = await db.users.find_one({"id": vip_id}, {"_id": 0, "id": 1, "timezone": 1, "vip.prices": 1})
+    target = await db.users.find_one({"id": vip_id}, {"_id": 0, "id": 1, "timezone": 1, "vip.prices": 1, "vip.places": 1})
     if not target:
         raise HTTPException(404, "Not found")
     await _vs_autocomplete(vip_id)
@@ -3915,7 +3963,7 @@ async def vs_public_slots(vip_id: str, user=Depends(get_current_user)):
         dd["taken"] = taken
     days = sorted(by_date.values(), key=lambda d: d["date"])
     return {"tz": tz, "buffer": VIP_SCHED_BUFFER, "durations": list(VIP_DURATIONS), "extra_hour_price": vip_extra_price(target),
-            "rates": {str(h): c for h, c in vip_rates(target).items()}, "days": days}
+            "rates": {str(h): c for h, c in vip_rates(target).items()}, "places": (target.get("vip") or {}).get("places") or [], "days": days}
 
 @api.post("/vip/schedule/{vip_id}/book")
 async def vs_book(vip_id: str, req: VipSchedBookReq, user=Depends(get_current_user)):
@@ -3965,6 +4013,8 @@ async def vs_book(vip_id: str, req: VipSchedBookReq, user=Depends(get_current_us
            "lock_start": _min_to_hm(max(0, cs - VIP_SCHED_BUFFER)),
            "lock_end": _min_to_hm(ce + VIP_SCHED_BUFFER),
            "activity": (req.activity or "").strip(), "venue": (req.venue or "").strip(),
+           "place": req.place if req.place in ("own", "your", "other") else None,
+           "location": _booking_location(target, req.place, req),
            "coins": int(req.coins), "hours": hours, "length": length, "extra_hours": extra_hours, "extra_coins": extra_coins, "status": "pending", "tz": tz,
            "created_at": now.isoformat(), "scheduled_at": f"{req.date}T{req.start}:00"}
     # atomic-ish: guard collection has a unique index on (vip_id,date,start) for active rows via a lock doc
@@ -4045,7 +4095,7 @@ async def vs_my_requests(user=Depends(get_current_user)):
         vip = await db.users.find_one({"id": b["vip_id"]}, {"_id": 0, "id": 1, "name": 1, "photos": 1, "vip.prices": 1})
         b["extra_hour_price"] = vip_extra_price(vip or {})
         b["vip_card"] = {"id": b["vip_id"], "name": (vip or {}).get("name") or "VIP", "photo": ((vip or {}).get("photos") or [None])[0]}
-        out.append(b)
+        out.append(_hide_own_address(b, b["status"] in ("confirmed", "completed")))
     return {"requests": out}
 
 # ---- Recurring weekly availability ----

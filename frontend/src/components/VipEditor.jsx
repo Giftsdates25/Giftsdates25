@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Crown, Plus, X, Sparkles, Lock, MapPin, Loader2, CalendarClock, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -13,6 +13,7 @@ import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import AddressPicker from "./AddressPicker";
 import { VIP_CATEGORIES, VIP_PLACES, PRICE_KEYS, svcLabel, catTitle, placeLabel, priceLabel, extraLabel, EXTRA_HOUR_MIN } from "../lib/vipCatalog";
 import { GENDERS } from "./ProfileDetailsForm";
 import CountrySelect from "./CountrySelect";
@@ -76,6 +77,8 @@ export default function VipEditor() {
   const [servicesNote, setServicesNote] = useState(v.services_note || "");
   const [prices, setPrices] = useState({ hour: "", h2: "", h3: "", ...(v.prices || {}), extra: v.prices?.extra || EXTRA_HOUR_MIN });
   const [places, setPlaces] = useState(v.places || []);
+  const [ownPlace, setOwnPlace] = useState({});
+  useEffect(() => { api.get("/vip/own-place").then((r) => setOwnPlace(r.data || {})).catch(() => {}); }, []);
   const [wants, setWants] = useState(v.client_wants || "");
   const [slots, setSlots] = useState(v.availability || []);
   const [ns, setNs] = useState({ date: "", from: "18:00", to: "23:00" });
@@ -191,6 +194,7 @@ export default function VipEditor() {
         show_on_main: showOnMain,
       };
       await api.put("/vip/profile", payload);
+      if (places.includes("own")) await api.put("/vip/own-place", ownPlace);
       await refreshUser();
       toast.success(t("vip_saved_toast", lang));
     } catch (e) { toast.error(e.response?.data?.detail || "Ошибка"); } finally { setBusy(false); }
@@ -399,6 +403,14 @@ export default function VipEditor() {
           searchPlaceholder={t("search", lang)}
           emptyText={t("no_results", lang)}
         />
+        {places.includes("own") && (
+          <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 space-y-2" data-testid="vip-own-place">
+            <div className="text-xs font-semibold text-amber-200">{t("own_addr_title", lang)}</div>
+            <p className="text-[11px] text-slate-400">{t("own_addr_note", lang)}</p>
+            <AddressPicker value={ownPlace} onChange={setOwnPlace} />
+            {!ownPlace.address && <p className="text-[11px] text-amber-300" data-testid="vip-own-place-missing">{t("own_addr_missing", lang)}</p>}
+          </div>
+        )}
       </div>
 
       <div>
