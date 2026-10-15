@@ -4189,19 +4189,65 @@ async def vs_pickup_answer(bid: str, action: str, user=Depends(get_current_user)
                  f"{user['name']} declined the pick-up for {b['date']} · {b['start']}. The taxi request is still open.", {"booking_id": bid})
     return {"ok": True, "status": b["status"]}
 
-# ---- Client reports a VIP no-show: full refund of date + taxi coins ----
+# ---- Client reports a VIP no-show: full refund of date + taxi coins, evidence kept for admin review ----
 @api.post("/vip/schedule/bookings/{bid}/no-show")
-async def vs_no_show(bid: str, user=Depends(get_current_user)):
+async def vs_no_show(bid: str, note: str = Form(""), photo: Optional[UploadFile] = File(None), user=Depends(get_current_user)):
     b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
     if not b: raise HTTPException(404, "Not found")
     if b["requester_id"] != user["id"]: raise HTTPException(403, "Only the client can report a no-show")
     now = datetime.now(timezone.utc)
     if b["status"] != "confirmed" or not (_vs_start_dt(b) + timedelta(minutes=15) <= now < _vs_end_dt(b)): raise HTTPException(400, "NO_SHOW_WINDOW")
+    note = (note or "").strip()[:1000]
+    photo_path = None
+    if photo is not None and photo.filename:
+        ct = photo.content_type or ""
+        if not ct.startswith("image/"): raise HTTPException(400, "IMAGE_ONLY")
+        data = await photo.read()
+        if len(data) > 10 * 1024 * 1024: raise HTTPException(400, "FILE_TOO_LARGE")
+        ext = (photo.filename.rsplit(".", 1)[-1] if "." in photo.filename else "jpg").lower()[:5]
+        res = put_object(f"{APP_NAME}/no-show/{bid}/{uuid.uuid4()}.{ext}", data, ct)
+        photo_path = res["path"]
+        await db.files.insert_one({"id": str(uuid.uuid4()), "storage_path": photo_path, "user_id": user["id"], "content_type": ct,
+                                   "size": res["size"], "private": True, "is_deleted": False, "created_at": now.isoformat()})
+    if not note and not photo_path: raise HTTPException(400, "EVIDENCE_REQUIRED")
+    coins = int(b.get("coins") or 0)
     await _vs_release(b, user["name"], "no_show")
-    await db.vip_sched.update_one({"id": bid}, {"$set": {"status": "cancelled", "no_show": True, "cancelled_at": now.isoformat(), "cancelled_by": user["id"],
-                                                         "refund": int(b.get("coins") or 0), "compensation": 0, "platform_fee": 0}})
-    await notify(b["vip_id"], "vs_no_show", "No-show reported", f"{user['name']} reported that you did not show up for the date on {b['date']} · {b['start']}. All coins were refunded to the client.", {"booking_id": bid}, email=True)
-    return {"status": "cancelled", "refunded": int(b.get("coins") or 0)}
+    report = {"note": note, "photo": photo_path, "created_at": now.isoformat(), "status": "open"}
+    await db.vip_sched.update_one({"id": bid}, {"$set": {"status": "cancelled", "no_show": True, "no_show_report": report, "cancelled_at": now.isoformat(),
+                                                         "cancelled_by": user["id"], "refund": coins, "compensation": 0, "platform_fee": 0}})
+    await notify(b["vip_id"], "vs_no_show", "No-show reported",
+                 f"{user['name']} reported that you did not show up for the date on {b['date']} · {b['start']}. All coins were refunded to the client; our team will review the report.",
+                 {"booking_id": bid}, email=True)
+    return {"status": "cancelled", "refunded": coins}
+
+@api.get("/admin/no-show-reports")
+async def admin_no_show_reports(admin=Depends(get_admin)):
+    docs = await db.vip_sched.find({"no_show_report": {"$exists": True}}, {"_id": 0}).sort("no_show_report.created_at", -1).to_list(300)
+    for b in docs: b["client"], b["vip"] = await _mini(b["requester_id"]), await _mini(b["vip_id"])
+    return {"reports": docs}
+
+@api.post("/admin/no-show-reports/{bid}/resolve")
+async def admin_no_show_resolve(bid: str, action: str, admin=Depends(get_admin)):
+    """valid: keep the refund. reversed: the VIP did show up — take the refund back from the client and pay the VIP."""
+    b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
+    if not b or (b.get("no_show_report") or {}).get("status") != "open": raise HTTPException(404, "No open report")
+    if action not in ("valid", "reversed"): raise HTTPException(400, "Bad action")
+    now = datetime.now(timezone.utc).isoformat()
+    sets = {"no_show_report.status": action, "no_show_report.resolved_at": now, "no_show_report.resolved_by": admin["id"]}
+    if action == "reversed":
+        client = await db.users.find_one({"id": b["requester_id"]}, {"_id": 0, "coins": 1})
+        amount = min(int(b.get("refund") or 0), int((client or {}).get("coins") or 0))
+        if amount:
+            await db.users.update_one({"id": b["requester_id"]}, {"$inc": {"coins": -amount}})
+            await db.users.update_one({"id": b["vip_id"]}, {"$inc": {"withdrawable": amount}})
+        sets.update({"status": "completed", "completed_at": now, "no_show_reversed_coins": amount})
+        await notify(b["requester_id"], "vs_no_show", "No-show report reversed",
+                     f"After review, the date on {b['date']} · {b['start']} was counted as attended. 🪙 {amount} were paid to the VIP.", {"booking_id": bid}, email=True)
+        await notify(b["vip_id"], "vs_no_show", "No-show report reversed ✅", f"After review you were paid 🪙 {amount} for the date on {b['date']}.", {"booking_id": bid}, email=True)
+    else:
+        await notify(b["vip_id"], "vs_no_show", "No-show report upheld", f"After review, the no-show report for {b['date']} · {b['start']} was upheld.", {"booking_id": bid}, email=True)
+    await db.vip_sched.update_one({"id": bid}, {"$set": sets})
+    return {"ok": True, "status": action}
 
 # ---- VIP running late: instant heads-up to the client ----
 class VipLateReq(BaseModel):

@@ -12,6 +12,7 @@ import AdminSupport from "../components/AdminSupport";
 import AdminTranslations from "../components/AdminTranslations";
 import AdminLiveLocations from "../components/AdminLiveLocations";
 import AdminBookingReports, { ReportPhotos, ReplyView } from "../components/AdminBookingReports";
+import AdminNoShowReports from "../components/AdminNoShowReports";
 
 export default function Admin() {
   const { lang } = useApp();
@@ -117,7 +118,7 @@ export default function Admin() {
             ))}
           </div>
         )}
-        {tab === "dates" && <AdminBookingReports />}
+        {tab === "dates" && <><AdminBookingReports /><AdminNoShowReports /></>}
         {tab === "payouts" && <>
 
         <div className="glass rounded-2xl p-5" data-testid="admin-payout-accounts">

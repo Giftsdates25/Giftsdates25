@@ -17,6 +17,7 @@ import VipPickupBlock from "../components/VipPickupBlock";
 import ArrivedButton from "../components/ArrivedButton";
 import TodayStrip from "../components/TodayStrip";
 import EarningsChart from "../components/EarningsChart";
+import NoShowReport from "../components/NoShowReport";
 import RunningLateButton from "../components/RunningLateButton";
 import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
@@ -83,16 +84,6 @@ function VipUpsell({ onGo }) {
   );
 }
 
-function NoShowButton({ b, onDone }) {
-  const { lang, refreshUser } = useApp();
-  const go = async () => {
-    if (!window.confirm(t("ns_confirm", lang).replace("{c}", b.coins))) return;
-    try { await api.post(`/vip/schedule/bookings/${b.id}/no-show`); toast.success(t("ns_done", lang)); await refreshUser(); onDone?.(); }
-    catch (e) { toast.error(e.response?.data?.detail || "Error"); }
-  };
-  return <Button data-testid={`vs-no-show-${b.id}`} size="sm" variant="outline" onClick={go} className="bg-white/5 border-rose-500/40 text-rose-300 hover:bg-rose-500/10 h-9">{t("ns_btn", lang)}</Button>;
-}
-
 function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onReload, busyId }) {
   const { lang } = useApp();
   const card = who === "incoming" ? b.requester : b.vip_card;
@@ -126,7 +117,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
         {b.status === "confirmed" && b.location?.address && <DirectionsButton loc={b.location} testid={`vs-directions-${b.id}`} />}
         {who === "outgoing" && checkInOpen && !b.arrived_at && <ArrivedButton b={b} onDone={onReload} />}
         {who === "incoming" && lateOpen && <RunningLateButton b={b} onDone={onReload} />}
-        {who === "outgoing" && noShowOpen && <NoShowButton b={b} onDone={onReload} />}
+        {who === "outgoing" && noShowOpen && <NoShowReport b={b} onDone={onReload} />}
         {b.late && b.status === "confirmed" && <span className="inline-flex items-center h-9 px-3 rounded-md text-xs bg-amber-500/15 border border-amber-500/40 text-amber-200" data-testid={`vs-late-badge-${b.id}`}>⏱ {t("lt_badge", lang).replace("{m}", b.late.minutes)}</span>}
         {b.arrived_at && <span className="inline-flex items-center h-9 px-3 rounded-md text-xs bg-emerald-500/15 border border-emerald-500/40 text-emerald-200" data-testid={`vs-arrived-badge-${b.id}`}>📍 {t("ar_arrived_at", lang).replace("{t}", new Date(b.arrived_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>}
         {who === "outgoing" && live && <ExtendDateButton id={b.id} url={`/vip/schedule/bookings/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={onReload} />}
