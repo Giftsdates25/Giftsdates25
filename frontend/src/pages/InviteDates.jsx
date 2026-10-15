@@ -144,8 +144,10 @@ function DateCard({ d, reload }) {
 
   const refuseSplit = () => {
     const total = Number(d.total_hold || d.coins || 0);
-    const inv = Math.floor(total / 2), rec = Math.floor(total / 4);
-    return { total, inv, rec, fee: total - inv - rec };
+    const tp = d.transportation || {};
+    const taxi = tp.type === "taxi" && tp.status === "confirmed" ? Math.min(total, Number(tp.taxi_amount || 0)) : 0;
+    const base = total - taxi, inv = Math.floor(base / 2), rec = Math.floor(base / 4);
+    return { total, inv: inv + taxi, rec, fee: base - inv - rec };
   };
   const refuseWarningText = () => {
     const { total, inv, rec, fee } = refuseSplit();

@@ -60,7 +60,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
   const shown = all.filter(x => matchesFilter(x.b.status, filter));
 
   const [cancelFor, setCancelFor] = useState(null);
-  const cancel = (b, isRecipient) => setCancelFor({ b, isRecipient, total: b.coins + (b.taxi?.status === "sent" ? (b.taxi?.coins || 0) : 0) });
+  const cancel = (b, isRecipient) => { const taxi = b.taxi?.status === "sent" ? (b.taxi?.coins || 0) : 0; setCancelFor({ b, isRecipient, taxi, total: b.coins + taxi }); };
   const doCancel = async (b) => {
     setBusyId(b.id);
     try { const { data } = await api.post(`/dates/cancel/${b.id}`); await refreshUser(); await load(); toast.success(t("date_cancelled_partial", lang).replace("{r}", data.refund)); }
@@ -305,7 +305,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
 
   return (
     <>
-      <CancelPreviewDialog open={!!cancelFor} onOpenChange={(o) => !o && setCancelFor(null)} total={cancelFor?.total || 0}
+      <CancelPreviewDialog open={!!cancelFor} onOpenChange={(o) => !o && setCancelFor(null)} total={cancelFor?.total || 0} taxi={cancelFor?.taxi || 0}
         byRequester={!cancelFor?.isRecipient} onConfirm={() => { const b = cancelFor.b; setCancelFor(null); doCancel(b); }} />
       <input ref={inputRef} data-testid="photo-verification-upload-input" type="file" accept="image/*" onChange={handleFile} className="hidden"/>
       {all.length === 0 && mode === "vip" && <EmptyLine text={t("none", lang)} />}

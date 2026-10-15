@@ -2969,10 +2969,11 @@ async def cancel_date(bid: str, user=Depends(get_current_user)):
         if sched.tzinfo is None: sched = sched.replace(tzinfo=timezone.utc)
         now_dt = datetime.now(timezone.utc)
         if sched <= now_dt < sched + timedelta(hours=24): raise HTTPException(400, "CANCEL_LOCKED_24H")
-        # inviter cancels -> forfeits 50%: 50% refunded to inviter, 25% to invitee, 25% to platform
-        refund = int(round(base * 0.5))          # back to the inviter
-        invitee_comp = int(round(base * 0.25))    # compensation to the invited person
-        platform_fee = base - refund - invitee_comp  # ~25% retained by the platform
+        # inviter cancels -> date coins: 50% back, 25% to invitee, 25% platform; taxi coins always refunded in full
+        dc = int(b["coins"])
+        refund = int(round(dc * 0.5)) + tcoins
+        invitee_comp = int(round(dc * 0.25))
+        platform_fee = dc - int(round(dc * 0.5)) - invitee_comp
         await db.users.update_one({"id": b["from_id"]}, {"$inc": {"coins": refund}})
         await db.users.update_one({"id": b["to_id"]}, {"$inc": {"escrow": -b["coins"], "withdrawable": invitee_comp - tcoins}})
         await db.date_bookings.update_one({"id": bid}, {"$set": {"status": "cancelled", "refund": refund, "compensation": invitee_comp, "platform_fee": platform_fee, "cancelled_at": now, "cancelled_by": "inviter", **taxi_set}})
@@ -5068,11 +5069,15 @@ async def _refund(d, mode, status):
         if mode == "full_inviter":
             await db.users.update_one({"id": inv}, {"$inc": {"coins": hold}})
             await record_txn(inv, "DATE_REFUND", hold, d["id"], "Full refund (recipient cancelled)")
-        else:  # 50/25/25
-            r_inv, r_rec = hold // 2, hold // 4
-            fee = hold - r_inv - r_rec
+        else:  # date coins 50/25/25; a paid taxi fee is always refunded in full
+            tr = d.get("transportation") or {}
+            taxi = min(hold, int(tr.get("taxi_amount") or 0)) if tr.get("type") == "taxi" and tr.get("status") == "confirmed" else 0
+            base = hold - taxi
+            r_inv, r_rec = base // 2, base // 4
+            fee = base - r_inv - r_rec
+            r_inv += taxi
             await db.users.update_one({"id": inv}, {"$inc": {"coins": r_inv}})
-            await record_txn(inv, "DATE_REFUND", r_inv, d["id"], "50% refund")
+            await record_txn(inv, "DATE_REFUND", r_inv, d["id"], "50% refund" + (f" + full taxi refund ({taxi})" if taxi else ""))
             await db.users.update_one({"id": rec}, {"$inc": {"withdrawable": r_rec}})
             await record_txn(rec, "RECIPIENT_COMPENSATION", r_rec, d["id"], "25% inconvenience compensation")
             await record_txn("PLATFORM", "PLATFORM_FEE", fee, d["id"], "25% platform fee")
