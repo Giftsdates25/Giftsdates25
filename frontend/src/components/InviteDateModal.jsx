@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import DateCommitmentNote from "./DateCommitmentNote";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -133,6 +134,7 @@ export default function InviteDateModal({ open, onOpenChange, target, initialDay
           </label>
         </div>
 
+        <div className="mt-3"><DateCommitmentNote testid="invite-commitment" /></div>
         <Button data-testid="invite-send-button" disabled={busy || !allFilled || !ack || !day || !timeOk} onClick={send} className="rose-btn text-white border-0 w-full h-11">
           {tr("iv_send")} · 🪙 {coins}
         </Button>

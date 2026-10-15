@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import DateCommitmentNote from "./DateCommitmentNote";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -127,6 +128,7 @@ export default function DateBookingModal({ open, onOpenChange, target }) {
               <p className="text-[11px] text-slate-500 mt-0.5" data-testid="date-price-note">{t("date_price_note", lang)}</p>
               <Input data-testid="date-coins-input" type="number" min={meta?.date_min_coins || 300} step="50" value={coins} onChange={e => setCoins(parseInt(e.target.value || 0))} className="bg-white/5 border-white/10 mt-1" /></div>
             <div className="text-xs text-slate-400 glass rounded-lg p-3">🔒 {t("commission_note", lang)}</div>
+            <DateCommitmentNote testid="date-booking-commitment" />
             <Button data-testid="date-booking-submit-button" disabled={busy || !day || !timeOk || activities.some(a => !a.trim())} onClick={submit} className="rose-btn text-white border-0 w-full h-11">
               {t("book_date", lang)} · 🪙 {coins}
             </Button>

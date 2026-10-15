@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import DateCommitmentNote from "./DateCommitmentNote";
 import { Crown, Lock, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -223,6 +224,7 @@ export default function VipSection({ userId, name, preview }) {
           )}
 
           <ExtraHoursStepper label={extraLabel(lang)} each={t("bk_each", lang)} value={extraHours} onChange={setExtraHours} price={extra} testid="vip-book-extra-hours" />
+          <DateCommitmentNote testid="vip-book-commitment" />
           <div className="text-xs font-semibold text-amber-200">{t("vip_book_btn", lang)}</div>
           <div className="grid grid-cols-2 gap-2">
             {PRICE_KEYS.map((p) => priceFor(p.k) > 0 && (

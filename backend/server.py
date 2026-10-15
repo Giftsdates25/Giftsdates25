@@ -4078,13 +4078,27 @@ async def vs_cancel(bid: str, user=Depends(get_current_user)):
     if b["status"] not in ("pending", "confirmed"):
         raise HTTPException(400, "CANNOT_CANCEL")
     now = datetime.now(timezone.utc).isoformat()
-    await _vs_release(b, user["name"], "cancelled")
-    await db.vip_sched.update_one({"id": bid}, {"$set": {"status": "cancelled", "cancelled_at": now, "cancelled_by": user["id"]}})
     other = b["vip_id"] if user["id"] == b["requester_id"] else b["requester_id"]
+    coins = int(b.get("coins") or 0)
+    if user["id"] == b["requester_id"] and coins:
+        # requester cancels -> same rule as regular dates: 50% back, 25% to the VIP, 25% platform fee
+        refund, comp = int(round(coins * 0.5)), int(round(coins * 0.25))
+        fee = coins - refund - comp
+        await db.users.update_one({"id": b["requester_id"]}, {"$inc": {"coins": refund}})
+        await db.users.update_one({"id": b["vip_id"]}, {"$inc": {"escrow": -coins, "withdrawable": comp}})
+        await db.transactions.insert_one({"id": str(uuid.uuid4()), "type": "date_cancel_fee", "from_id": b["requester_id"], "to_id": b["vip_id"], "cost": comp, "net": comp, "created_at": now})
+        if fee:
+            await db.transactions.insert_one({"id": str(uuid.uuid4()), "type": "platform_cancel_fee", "from_id": b["requester_id"], "to_id": None, "cost": fee, "net": fee, "created_at": now})
+        msg = f"🪙 {refund} refunded to the requester, 🪙 {comp} to the VIP, 🪙 {fee} platform fee."
+    else:
+        await _vs_release(b, user["name"], "cancelled")
+        refund, comp, fee = coins, 0, 0
+        msg = f"All coins (🪙 {coins}) were refunded to the requester."
+    await db.vip_sched.update_one({"id": bid}, {"$set": {"status": "cancelled", "cancelled_at": now, "cancelled_by": user["id"],
+                                                         "refund": refund, "compensation": comp, "platform_fee": fee}})
     await notify(other, "vs_cancelled", "Date cancelled",
-                 f"{user['name']} cancelled the date on {b['date']} · {b['start']}–{b['end']}. 🪙 {b.get('coins', 0)} refunded to the requester.",
-                 {"booking_id": bid}, email=True)
-    return {"status": "cancelled", "refunded": b.get("coins", 0)}
+                 f"{user['name']} cancelled the date on {b['date']} · {b['start']}–{b['end']}. {msg}", {"booking_id": bid}, email=True)
+    return {"status": "cancelled", "refunded": refund, "compensation": comp, "platform_fee": fee}
 
 @api.get("/vip/schedule/bookings/mine")
 async def vs_my_requests(user=Depends(get_current_user)):

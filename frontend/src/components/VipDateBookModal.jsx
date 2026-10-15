@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
+import DateCommitmentNote from "./DateCommitmentNote";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Button } from "./ui/button";
 import { Label } from "./ui/label";
@@ -164,6 +165,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
                 </Step>
               )}
               <div className="text-xs text-slate-400 glass rounded-lg p-3">{t(isReschedule ? "bk_resched_note" : "bk_escrow_note", lang)}</div>
+              {!isReschedule && <DateCommitmentNote testid="vs-book-commitment" />}
             </div>
             <div className="border-t border-white/10 px-6 py-4 space-y-3 bg-[#14111c]" data-testid="vs-book-footer">
               {!isReschedule && <PriceSummary lang={lang} length={length} extra={extra} rate={rate} extraPrice={extraPrice} total={total} />}
