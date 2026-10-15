@@ -167,11 +167,17 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
                 </Step>
               )}
               <div className="text-xs text-slate-400 glass rounded-lg p-3">{t(isReschedule ? "bk_resched_note" : "bk_escrow_note", lang)}</div>
-              {!isReschedule && <DateCommitmentNote testid="vs-book-commitment" checked={agree} onCheckedChange={setAgree} />}
+              {!isReschedule && <DateCommitmentNote testid="vs-book-commitment" />}
             </div>
             <div className="border-t border-white/10 px-6 py-4 space-y-3 bg-[#14111c]" data-testid="vs-book-footer">
               {!isReschedule && <PriceSummary lang={lang} length={length} extra={extra} rate={rate} extraPrice={extraPrice} total={total} />}
               {slot && <div className="text-xs text-slate-300 font-mono-num text-center" data-testid="vs-book-chosen">{fmtDay(day)} · {t("bk_start", lang)} {slot.start} → {t("bk_finish", lang)} {slot.end}</div>}
+              {!isReschedule && (
+                <label className={`flex items-start gap-2 cursor-pointer rounded-lg border px-2.5 py-2 text-xs transition-colors ${agree ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/5 text-slate-200"}`}>
+                  <input type="checkbox" data-testid="vs-book-commitment-checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-4 w-4 accent-rose-500 shrink-0" />
+                  <span>{t("commit_agree", lang)}</span>
+                </label>
+              )}
               <Button data-testid="vs-book-submit" disabled={busy || !slot || (!isReschedule && !agree)} onClick={submit} className="rose-btn text-white border-0 w-full h-11">
                 {busy ? <Loader2 size={16} className="animate-spin" /> : isReschedule ? t("bk_propose", lang) : <>{t("bk_request", lang)} · 🪙 {total}</>}
               </Button>
