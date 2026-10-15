@@ -49,6 +49,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
   const [length, setLength] = useState(1);
   const [extra, setExtra] = useState(0);
   const [place, setPlace] = useState(null);
+  const [agree, setAgree] = useState(false);
   const [loc, setLoc] = useState({});
   const [busy, setBusy] = useState(false);
   const isReschedule = !!rescheduleId;
@@ -66,7 +67,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
   useEffect(() => {
     if (!open) return;
     const h = rescheduleHours || 1;
-    setStartMin(null); setLength(Math.min(3, h)); setExtra(Math.max(0, h - 3)); setPlace(null); setLoc({}); load();
+    setStartMin(null); setLength(Math.min(3, h)); setExtra(Math.max(0, h - 3)); setPlace(null); setLoc({}); setAgree(false); load();
   }, [open, load, rescheduleHours]);
 
   const dayObj = (data.days || []).find((d) => d.date === day);
@@ -77,6 +78,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
 
   const submit = async () => {
     if (!slot) { toast.error(t("bk_pick_slot_err", lang)); return; }
+    if (!isReschedule && !agree) { toast.error(t("commit_required", lang)); return; }
     const places = data.places || [];
     if (!isReschedule && places.length && !place) { toast.error(t("vip_select_place_first", lang)); return; }
     if (!isReschedule && place && place !== "own" && !loc.address) { toast.error(t("vip_addr_required", lang)); return; }
@@ -165,12 +167,12 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
                 </Step>
               )}
               <div className="text-xs text-slate-400 glass rounded-lg p-3">{t(isReschedule ? "bk_resched_note" : "bk_escrow_note", lang)}</div>
-              {!isReschedule && <DateCommitmentNote testid="vs-book-commitment" />}
+              {!isReschedule && <DateCommitmentNote testid="vs-book-commitment" checked={agree} onCheckedChange={setAgree} />}
             </div>
             <div className="border-t border-white/10 px-6 py-4 space-y-3 bg-[#14111c]" data-testid="vs-book-footer">
               {!isReschedule && <PriceSummary lang={lang} length={length} extra={extra} rate={rate} extraPrice={extraPrice} total={total} />}
               {slot && <div className="text-xs text-slate-300 font-mono-num text-center" data-testid="vs-book-chosen">{fmtDay(day)} · {t("bk_start", lang)} {slot.start} → {t("bk_finish", lang)} {slot.end}</div>}
-              <Button data-testid="vs-book-submit" disabled={busy || !slot} onClick={submit} className="rose-btn text-white border-0 w-full h-11">
+              <Button data-testid="vs-book-submit" disabled={busy || !slot || (!isReschedule && !agree)} onClick={submit} className="rose-btn text-white border-0 w-full h-11">
                 {busy ? <Loader2 size={16} className="animate-spin" /> : isReschedule ? t("bk_propose", lang) : <>{t("bk_request", lang)} · 🪙 {total}</>}
               </Button>
             </div>

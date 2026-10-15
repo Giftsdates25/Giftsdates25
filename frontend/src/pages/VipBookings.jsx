@@ -10,6 +10,8 @@ import { useApp } from "../context/AppContext";
 import VipAvailabilityEditor from "../components/VipAvailabilityEditor";
 import VipDateBookModal from "../components/VipDateBookModal";
 import AddToCalendar from "../components/AddToCalendar";
+import CancelPreviewDialog from "../components/CancelPreviewDialog";
+import DirectionsButton from "../components/DirectionsButton";
 import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
 import { MapsLink } from "../components/AddressPicker";
@@ -85,6 +87,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
       </div>
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         {b.status === "confirmed" && <AddToCalendar id={b.id} title={`GiftsDates VIP: ${b.activity || card?.name || "Date"}`} place={[b.location?.address, b.location?.city].filter(Boolean).join(", ") || b.venue || b.activity} start={start} end={end} link="/vip-bookings" />}
+        {b.status === "confirmed" && b.location?.address && <DirectionsButton loc={b.location} testid={`vs-directions-${b.id}`} />}
         {who === "outgoing" && live && <ExtendDateButton id={b.id} url={`/vip/schedule/bookings/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={onReload} />}
         <div className="text-right me-1">
           <div className="text-amber-300 font-mono-num text-sm">🪙 {b.coins}</div>
@@ -101,14 +104,14 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
           </>
         )}
         {who === "incoming" && b.status === "confirmed" && (
-          <Button data-testid={`vs-cancel-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onCancel(b.id)} className="bg-white/5 border-white/15 text-slate-300 hover:bg-white/10 h-9">{t("vb_cancel", lang)}</Button>
+          <Button data-testid={`vs-cancel-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onCancel(b, who)} className="bg-white/5 border-white/15 text-slate-300 hover:bg-white/10 h-9">{t("vb_cancel", lang)}</Button>
         )}
         {who === "outgoing" && (b.status === "pending" || b.status === "confirmed") && (
           <>
             {b.status === "pending" && (
               <Button data-testid={`vs-reschedule-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onReschedule(b)} className="bg-white/5 border-amber-500/40 text-amber-300 hover:bg-amber-500/10 h-9">{t("vb_reschedule", lang)}</Button>
             )}
-            <Button data-testid={`vs-cancel-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onCancel(b.id)} className="bg-white/5 border-white/15 text-slate-300 hover:bg-white/10 h-9">{t("vb_cancel", lang)}</Button>
+            <Button data-testid={`vs-cancel-${b.id}`} size="sm" variant="outline" disabled={loading} onClick={() => onCancel(b, who)} className="bg-white/5 border-white/15 text-slate-300 hover:bg-white/10 h-9">{t("vb_cancel", lang)}</Button>
           </>
         )}
       </div>
@@ -133,6 +136,7 @@ export default function VipBookings() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [reschedule, setReschedule] = useState(null); // booking being rescheduled
+  const [cancelFor, setCancelFor] = useState(null); // { b, who }
 
   const load = useCallback(async () => {
     try {
@@ -153,7 +157,8 @@ export default function VipBookings() {
   };
   const confirm = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/confirm`); toast.success(t("vb_confirmed_toast", lang)); }, id);
   const decline = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/decline`); toast.success(t("vb_declined_toast", lang)); }, id);
-  const cancel = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/cancel`); toast.success(t("vb_cancelled_toast", lang)); }, id);
+  const cancel = (b, who) => setCancelFor({ b, who });
+  const doCancel = (id) => act(async () => { await api.post(`/vip/schedule/bookings/${id}/cancel`); toast.success(t("vb_cancelled_toast", lang)); }, id);
 
   if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-slate-400"><Loader2 className="animate-spin" /></div>;
 
@@ -250,6 +255,8 @@ export default function VipBookings() {
         </div>
       )}
 
+      <CancelPreviewDialog open={!!cancelFor} onOpenChange={(o) => !o && setCancelFor(null)} total={cancelFor?.b.coins || 0}
+        byRequester={cancelFor?.who === "outgoing"} onConfirm={() => { const id = cancelFor.b.id; setCancelFor(null); doCancel(id); }} />
       {reschedule && (
         <VipDateBookModal
           open={!!reschedule}

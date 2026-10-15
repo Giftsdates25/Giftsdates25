@@ -22,6 +22,7 @@ export default function VipSection({ userId, name, preview }) {
   const [busy, setBusy] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [extraHours, setExtraHours] = useState(0);
+  const [agree, setAgree] = useState(false);
 
   const unlockSection = async () => {
     const price = data?.unlock_price || 100;
@@ -87,6 +88,7 @@ export default function VipSection({ userId, name, preview }) {
     const coins = priceFor(durKey);
     if (!coins) { toast.error("Цена не указана"); return; }
     const total = coins + extraHours * extra;
+    if (!agree) { toast.error(t("commit_required", lang)); return; }
     if (hasPlaces && !place) { toast.error(t("vip_select_place_first", lang)); return; }
     if (place && place !== "own" && !loc.address) { toast.error(t("vip_addr_required", lang)); return; }
     if ((( user?.coins || 0) + (user?.withdrawable || 0)) < total) { toast.error("Недостаточно монет", { action: { label: "Пополнить", onClick: () => nav("/wallet") } }); return; }
@@ -199,7 +201,7 @@ export default function VipSection({ userId, name, preview }) {
       )}
 
 
-      <Dialog open={!!slot} onOpenChange={(o) => { if (!o) { setSlot(null); setPlace(null); setLoc({}); setExtraHours(0); } }}>
+      <Dialog open={!!slot} onOpenChange={(o) => { if (!o) { setSlot(null); setPlace(null); setLoc({}); setExtraHours(0); setAgree(false); } }}>
         <DialogContent className="bg-[#161018] border-white/10 text-white max-w-sm max-h-[85vh] overflow-y-auto" data-testid="vip-book-dialog">
           <DialogHeader><DialogTitle className="font-serif-luxe text-xl">{data.name || name}</DialogTitle></DialogHeader>
           {slot && <p className="text-sm text-slate-400"><Calendar size={13} className="inline me-1 -mt-0.5" />{slot.date} · {slot.from}–{slot.to}</p>}
@@ -224,11 +226,11 @@ export default function VipSection({ userId, name, preview }) {
           )}
 
           <ExtraHoursStepper label={extraLabel(lang)} each={t("bk_each", lang)} value={extraHours} onChange={setExtraHours} price={extra} testid="vip-book-extra-hours" />
-          <DateCommitmentNote testid="vip-book-commitment" />
+          <DateCommitmentNote testid="vip-book-commitment" checked={agree} onCheckedChange={setAgree} />
           <div className="text-xs font-semibold text-amber-200">{t("vip_book_btn", lang)}</div>
           <div className="grid grid-cols-2 gap-2">
             {PRICE_KEYS.map((p) => priceFor(p.k) > 0 && (
-              <Button key={p.k} data-testid={`vip-book-${p.k}`} onClick={() => book(p.k)} disabled={busy} className="rose-btn text-white border-0 h-auto py-2 flex-col">
+              <Button key={p.k} data-testid={`vip-book-${p.k}`} onClick={() => book(p.k)} disabled={busy || !agree} className="rose-btn text-white border-0 h-auto py-2 flex-col">
                 <span className="text-xs">{priceLabel(p.k, lang)}{extraHours > 0 ? ` + ${extraHours}h` : ""}</span><span className="font-mono-num">🪙 {priceFor(p.k) + extraHours * extra}</span>
               </Button>
             ))}

@@ -11,6 +11,8 @@ import { MapsLink } from "./AddressPicker";
 import AddressPicker from "./AddressPicker";
 import AddToCalendar from "./AddToCalendar";
 import ExtendDateButton from "./ExtendDateButton";
+import CancelPreviewDialog from "./CancelPreviewDialog";
+import DirectionsButton from "./DirectionsButton";
 
 import { SectionTitle, EmptyLine } from "./DatesUI";
 import CountdownBadge from "./CountdownBadge";
@@ -57,15 +59,9 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
   useEffect(() => { onItems?.(all.map(x => x.b.status)); }, [statusKey]); // eslint-disable-line
   const shown = all.filter(x => matchesFilter(x.b.status, filter));
 
-  const cancel = async (b, isRecipient) => {
-    const tcoins = b.taxi?.status === "sent" ? (b.taxi?.coins || 0) : 0;
-    const base = b.coins + tcoins;
-    if (isRecipient) {
-      if (!window.confirm(t("cancel_recipient_warning", lang).replace("{total}", base))) return;
-    } else {
-      const r = Math.round(base * pct / 100), k = base - r;
-      if (!window.confirm(t("cancel_warning", lang).replace("{p}", pct).replace("{r}", r).replace("{k}", k))) return;
-    }
+  const [cancelFor, setCancelFor] = useState(null);
+  const cancel = (b, isRecipient) => setCancelFor({ b, isRecipient, total: b.coins + (b.taxi?.status === "sent" ? (b.taxi?.coins || 0) : 0) });
+  const doCancel = async (b) => {
     setBusyId(b.id);
     try { const { data } = await api.post(`/dates/cancel/${b.id}`); await refreshUser(); await load(); toast.success(t("date_cancelled_partial", lang).replace("{r}", data.refund)); }
     catch (e) { const d = e.response?.data?.detail; toast.error(d === "CANCEL_LOCKED_24H" ? t("cancel_locked_24h", lang) : d || t("failed", lang)); }
@@ -167,6 +163,7 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
         {["accepted", "confirmed"].includes(b.status) && (
           <div className="mt-2 flex flex-wrap gap-2"><AddToCalendar id={b.id} title={`GiftsDates: ${b.selected_activity || "Date"} · ${b.venue}`}
             place={[b.venue, b.address, b.city, b.country].filter(Boolean).join(", ")} start={new Date(b.scheduled_at)} end={b.duration_min ? vipEnd(b) : undefined} />
+            {b.address && <DirectionsButton loc={b} testid={`date-directions-${b.id}`} />}
             {b.vip && !isIncoming && started && Date.now() < vipEnd(b).getTime() && <ExtendDateButton id={b.id} url={`/vip/book/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={load} />}</div>
         )}
         {["accepted", "confirmed"].includes(b.status) && <div className="mt-2"><LiveLocation kind="booking" id={b.id} otherName={isIncoming ? b.from_name : b.to_name}
@@ -308,6 +305,8 @@ export default function DateBookingList({ mode = "regular", onItems, filter = "a
 
   return (
     <>
+      <CancelPreviewDialog open={!!cancelFor} onOpenChange={(o) => !o && setCancelFor(null)} total={cancelFor?.total || 0}
+        byRequester={!cancelFor?.isRecipient} onConfirm={() => { const b = cancelFor.b; setCancelFor(null); doCancel(b); }} />
       <input ref={inputRef} data-testid="photo-verification-upload-input" type="file" accept="image/*" onChange={handleFile} className="hidden"/>
       {all.length === 0 && mode === "vip" && <EmptyLine text={t("none", lang)} />}
       {shown.length > 0 && (

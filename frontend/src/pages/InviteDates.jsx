@@ -8,6 +8,7 @@ import { api, fileUrl } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { t } from "../lib/i18n";
 import AddressPicker, { MapsLink } from "../components/AddressPicker";
+import DirectionsButton from "../components/DirectionsButton";
 import DateBookingList from "../components/DateBookingList";
 import CancelledDates from "../components/CancelledDates";
 import { SectionTitle, Stat, EmptyLine, EmptyDates, FilterBar } from "../components/DatesUI";
@@ -316,6 +317,7 @@ function DateCard({ d, reload }) {
           <Button data-testid={`date-verify-${d.id}`} onClick={() => setShowVerify(v => !v)} variant="outline" className="h-9 bg-emerald-500/10 border-emerald-500/40 text-emerald-300"><Camera size={14} className="me-1" />{tr("id_send_photo_conf")}</Button>}
         {chatEnabled && <Button data-testid={`date-chat-toggle-${d.id}`} onClick={() => setShowChat(v => !v)} variant="outline" className="h-9 bg-sky-500/10 border-sky-500/40 text-sky-300"><MessageCircle size={14} className="me-1" />{tr("id_chat")}</Button>}
         {showCal && (() => { const ev = _calEvent(); return <AddToCalendar id={d.id} title={ev.title} place={ev.place} start={ev.s} end={ev.e} />; })()}
+        {d.status === "DATE_CONFIRMED" && (d.location?.address || d.location?.lat != null) && <DirectionsButton loc={d.location} testid={`invite-directions-${d.id}`} />}
       </div>
       {d.status === "DATE_CONFIRMED" && <div className="mt-3"><LiveLocation kind="invite" id={d.id} otherName={d.other?.name}
         venue={d.location?.lat != null && d.location?.lng != null ? `${d.location.lat},${d.location.lng}` : [d.location?.venue, d.location?.address, d.location?.city, d.location?.country].filter(Boolean).join(", ")} /></div>}

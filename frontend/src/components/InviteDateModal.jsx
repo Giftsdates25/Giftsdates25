@@ -20,6 +20,7 @@ export default function InviteDateModal({ open, onOpenChange, target, initialDay
   const [activities, setActivities] = useState(["", "", ""]);
   const [coins, setCoins] = useState(floor);
   const [ack, setAck] = useState(false);
+  const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [avail, setAvail] = useState({ available_days: [], busy_days: [] });
   const [day, setDay] = useState(null);
@@ -27,7 +28,7 @@ export default function InviteDateModal({ open, onOpenChange, target, initialDay
 
   useEffect(() => {
     if (open) {
-      setActivities(["", "", ""]); setCoins(floor); setAck(false); setDay(initialDay); setStart(null);
+      setActivities(["", "", ""]); setCoins(floor); setAck(false); setAgree(false); setDay(initialDay); setStart(null);
       if (target?.id) api.get(`/profiles/${target.id}/availability`).then(r => setAvail(r.data)).catch(() => {});
     }
   }, [open]); // eslint-disable-line
@@ -134,8 +135,8 @@ export default function InviteDateModal({ open, onOpenChange, target, initialDay
           </label>
         </div>
 
-        <div className="mt-3"><DateCommitmentNote testid="invite-commitment" /></div>
-        <Button data-testid="invite-send-button" disabled={busy || !allFilled || !ack || !day || !timeOk} onClick={send} className="rose-btn text-white border-0 w-full h-11">
+        <div className="mt-3"><DateCommitmentNote testid="invite-commitment" checked={agree} onCheckedChange={setAgree} /></div>
+        <Button data-testid="invite-send-button" disabled={busy || !allFilled || !ack || !agree || !day || !timeOk} onClick={send} className="rose-btn text-white border-0 w-full h-11">
           {tr("iv_send")} · 🪙 {coins}
         </Button>
       </DialogContent>

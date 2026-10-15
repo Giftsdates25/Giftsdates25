@@ -25,6 +25,7 @@ export default function DateBookingModal({ open, onOpenChange, target }) {
   const [activities, setActivities] = useState(["", "", ""]);
   const [avail, setAvail] = useState({ available_days: [], busy_days: [] });
   const [busy, setBusy] = useState(false);
+  const [agree, setAgree] = useState(false);
 
   useEffect(() => {
     setCity(target?.city || ""); setLoc({ address: "", postal_code: "", country: target?.country || "", lat: null, lng: null }); setCoins(target?.date_price || meta?.date_min_coins || 300); setDay(null); setActivities(["", "", ""]);
@@ -128,8 +129,8 @@ export default function DateBookingModal({ open, onOpenChange, target }) {
               <p className="text-[11px] text-slate-500 mt-0.5" data-testid="date-price-note">{t("date_price_note", lang)}</p>
               <Input data-testid="date-coins-input" type="number" min={meta?.date_min_coins || 300} step="50" value={coins} onChange={e => setCoins(parseInt(e.target.value || 0))} className="bg-white/5 border-white/10 mt-1" /></div>
             <div className="text-xs text-slate-400 glass rounded-lg p-3">🔒 {t("commission_note", lang)}</div>
-            <DateCommitmentNote testid="date-booking-commitment" />
-            <Button data-testid="date-booking-submit-button" disabled={busy || !day || !timeOk || activities.some(a => !a.trim())} onClick={submit} className="rose-btn text-white border-0 w-full h-11">
+            <DateCommitmentNote testid="date-booking-commitment" checked={agree} onCheckedChange={setAgree} />
+            <Button data-testid="date-booking-submit-button" disabled={busy || !agree || !day || !timeOk || activities.some(a => !a.trim())} onClick={submit} className="rose-btn text-white border-0 w-full h-11">
               {t("book_date", lang)} · 🪙 {coins}
             </Button>
           </div>
