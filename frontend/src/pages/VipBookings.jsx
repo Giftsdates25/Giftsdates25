@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { Calendar, Clock, Check, X, Crown, Loader2, CalendarClock, Inbox, Send, Ban, MapPin } from "lucide-react";
+import { Calendar, Clock, Check, X, Crown, Loader2, CalendarClock, Inbox, Send, Ban, MapPin, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
@@ -24,6 +24,7 @@ import CancelledDates from "../components/CancelledDates";
 
 const fmtDay = (d) => { try { const [y, m, dd] = d.split("-").map(Number); return new Date(y, m - 1, dd).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }); } catch { return d; } };
 
+const ACCENT = { pending: "border-s-amber-400/70", confirmed: "border-s-sky-400/70", completed: "border-s-emerald-400/70", declined: "border-s-rose-400/50", cancelled: "border-s-slate-500/50" };
 const STATUS_BADGE = {
   pending: "bg-amber-500/15 border-amber-500/40 text-amber-300",
   confirmed: "bg-sky-500/15 border-sky-500/40 text-sky-300",
@@ -64,6 +65,21 @@ function BookingPlace({ b, lang, who }) {
   );
 }
 
+function VipUpsell({ onGo }) {
+  return (
+    <div className="glass rounded-2xl p-6 border border-amber-500/20" data-testid="vs-vip-upsell">
+      <div className="flex items-start gap-3">
+        <Crown className="text-amber-300 shrink-0 mt-0.5" size={20} />
+        <div>
+          <div className="font-semibold text-white">Availability Calendar is a VIP feature</div>
+          <p className="text-sm text-slate-400 mt-1">Become a VIP to publish your availability and let members book exact time slots with you.</p>
+          <Button onClick={onGo} className="rose-btn text-white border-0 mt-3" data-testid="vs-get-vip">Get VIP</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onReload, busyId }) {
   const { lang } = useApp();
   const card = who === "incoming" ? b.requester : b.vip_card;
@@ -73,7 +89,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
   const live = b.status === "confirmed" && now >= start.getTime() && now < end.getTime();
   const checkInOpen = b.status === "confirmed" && now >= start.getTime() - 2 * 3600000 && now < end.getTime();
   return (
-    <div className="glass rounded-2xl p-4" data-testid={`vs-booking-${b.id}`}>
+    <div className={`glass rounded-2xl p-4 border-s-2 ${ACCENT[b.status] || "border-s-white/10"} transition-colors hover:bg-white/[0.04]`} data-testid={`vs-booking-${b.id}`}>
     <div className="flex flex-col sm:flex-row sm:items-center gap-4">
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <Avatar card={card} />
@@ -192,78 +208,60 @@ export default function VipBookings() {
     </div>
   );
 
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex items-center gap-3 mb-1">
-        <h1 className="font-serif-luxe text-3xl gold-text flex items-center gap-2"><Crown size={26} className="text-amber-300" /> {t("vb_title", lang)}</h1>
-        {pending.length > 0 && <Badge className="bg-rose-500 text-white border-0 rounded-full" data-testid="vs-pending-badge">🔔 {pending.length}</Badge>}
-      </div>
-      <p className="text-sm text-slate-400 mb-6">{t("vb_intro", lang)}</p>
+  const cards = (list, who) => list.map((b) => (
+    <BookingCard key={b.id} b={b} who={who} onConfirm={confirm} onDecline={decline} onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />
+  ));
+  const tabs = [
+    ...(isVip ? [{ v: "requests", label: t("vb_requests", lang), icon: Inbox, n: pending.length, hot: true, body: pending.length ? cards(pending, "incoming") : <Empty icon={Inbox} text={t("vb_none_pending", lang)} /> }] : []),
+    { v: "mine", label: t("vb_mine", lang), icon: Send, n: mineActive.length, body: mineActive.length ? cards(mineActive, "outgoing") : <Empty icon={Send} text={t("vb_none_mine", lang)} /> },
+    ...(isVip ? [{ v: "confirmed", label: t("vb_confirmed", lang), icon: CalendarClock, n: confirmed.length, body: confirmed.length ? cards(confirmed, "incoming") : <Empty icon={CalendarClock} text={t("vb_none_confirmed", lang)} /> }] : []),
+    { v: "cancelled", label: t("vb_cancel_refused", lang), icon: Ban, n: closedCount, body: closedList },
+    ...(isVip ? [{ v: "past", label: t("vb_past", lang), icon: Calendar, n: past.length, body: past.length ? cards(past, "incoming") : <Empty icon={Calendar} text={t("vb_none_past", lang)} /> }] : []),
+    { v: "availability", label: t("vb_availability", lang), icon: CalendarDays, body: isVip ? <VipAvailabilityEditor blocks={sched?.blocks || []} onChanged={load} /> : <VipUpsell onGo={() => nav("/wallet?premium=1")} /> },
+  ];
+  const stats = isVip
+    ? [[t("vb_requests", lang), pending.length, "text-rose-300"], [t("vb_confirmed", lang), confirmed.length, "text-emerald-300"], [t("vb_mine", lang), mineActive.length, "text-sky-300"], [t("vb_past", lang), past.length, "text-slate-300"]]
+    : [[t("vb_mine", lang), mineActive.length, "text-sky-300"], [t("vb_cancel_refused", lang), closedCount, "text-slate-300"]];
 
-      <section className="mb-8" data-testid="vip-escrow-dates">
-        <h2 className="font-serif-luxe text-xl mb-3 flex items-center gap-2"><Crown size={18} className="text-amber-300" /> {t("vb_vip_dates", lang)}</h2>
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-8">
+      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-5 mb-6">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.25em] text-amber-300/80 mb-1.5">GiftsDates · VIP</div>
+          <h1 className="font-serif-luxe text-4xl gold-text flex items-center gap-2.5"><Crown size={28} className="text-amber-300" /> {t("vb_title", lang)}</h1>
+          <p className="text-sm text-slate-400 mt-1.5">{t("vb_intro", lang)}</p>
+        </div>
+        <div className={`grid gap-2 ${stats.length === 4 ? "grid-cols-4" : "grid-cols-2"}`} data-testid="vs-stats">
+          {stats.map(([label, n, c]) => (
+            <div key={label} className="rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 min-w-[92px]">
+              <div className={`font-mono-num text-2xl leading-none ${c}`}>{n}</div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 mt-1.5 truncate">{label}</div>
+            </div>
+          ))}
+        </div>
+      </header>
+
+      <Tabs defaultValue={tabs[0].v} className="w-full">
+        <div className="sticky top-16 z-20 -mx-4 px-4 py-2 bg-[#0D0B12]/85 backdrop-blur-xl border-b border-white/10">
+          <TabsList className="bg-transparent p-0 h-auto w-full justify-start gap-1 overflow-x-auto flex-nowrap" data-testid="vs-tabs">
+            {tabs.map(({ v, label, icon: Icon, n, hot }) => (
+              <TabsTrigger key={v} value={v} data-testid={`vs-tab-${v}`}
+                className="shrink-0 rounded-full px-4 py-2 text-sm text-slate-400 border border-transparent hover:text-white transition-colors data-[state=active]:bg-white/[0.07] data-[state=active]:border-amber-400/40 data-[state=active]:text-amber-100 data-[state=active]:shadow-none">
+                <Icon size={14} className="me-1.5" />{label}
+                {n > 0 && <span className={`ms-1.5 text-[10px] rounded-full px-1.5 py-0.5 font-mono-num ${hot ? "bg-rose-500 text-white" : "bg-white/10 text-slate-200"}`}>{n}</span>}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+        {tabs.map(({ v, body }) => (
+          <TabsContent key={v} value={v} className="mt-6 space-y-3" data-testid={`vs-panel-${v}`}>{body}</TabsContent>
+        ))}
+      </Tabs>
+
+      <section className="mt-12" data-testid="vip-escrow-dates">
+        <h2 className="font-serif-luxe text-xl mb-3 flex items-center gap-2 text-slate-200"><Crown size={18} className="text-amber-300" /> {t("vb_vip_dates", lang)}</h2>
         <DateBookingList mode="vip" />
       </section>
-
-      {isVip && (
-        <section className="mb-8" data-testid="vs-availability-section">
-          <VipAvailabilityEditor blocks={sched?.blocks || []} onChanged={load} />
-        </section>
-      )}
-
-      {isVip ? (
-        <Tabs defaultValue="requests" className="w-full">
-          <TabsList className="bg-white/5 border border-white/10 flex-wrap h-auto">
-            <TabsTrigger value="requests" data-testid="vs-tab-requests" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">
-              {t("vb_requests", lang)} {pending.length > 0 && <span className="ml-1.5 text-[10px] bg-rose-500 text-white rounded-full px-1.5">{pending.length}</span>}
-            </TabsTrigger>
-            <TabsTrigger value="confirmed" data-testid="vs-tab-confirmed" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_confirmed", lang)}</TabsTrigger>
-            <TabsTrigger value="mine" data-testid="vs-tab-mine" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_mine", lang)}</TabsTrigger>
-            <TabsTrigger value="cancelled" data-testid="vs-tab-cancelled" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">
-              {t("vb_cancel_refused", lang)} {closedCount > 0 && <span className="ml-1.5 text-[10px] bg-slate-500/60 text-white rounded-full px-1.5">{closedCount}</span>}
-            </TabsTrigger>
-            <TabsTrigger value="past" data-testid="vs-tab-past" className="data-[state=active]:bg-rose-500 data-[state=active]:text-white">{t("vb_past", lang)}</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="requests" className="mt-5 space-y-3">
-            {pending.length === 0 ? <Empty icon={Inbox} text={t("vb_none_pending", lang)} /> :
-              pending.map((b) => <BookingCard key={b.id} b={b} who="incoming" onConfirm={confirm} onDecline={decline} onCancel={cancel} onReload={load} busyId={busyId} />)}
-          </TabsContent>
-          <TabsContent value="confirmed" className="mt-5 space-y-3">
-            {confirmed.length === 0 ? <Empty icon={CalendarClock} text={t("vb_none_confirmed", lang)} /> :
-              confirmed.map((b) => <BookingCard key={b.id} b={b} who="incoming" onConfirm={confirm} onDecline={decline} onCancel={cancel} onReload={load} busyId={busyId} />)}
-          </TabsContent>
-          <TabsContent value="past" className="mt-5 space-y-3">
-            {past.length === 0 ? <Empty icon={Calendar} text={t("vb_none_past", lang)} /> :
-              past.map((b) => <BookingCard key={b.id} b={b} who="incoming" busyId={busyId} />)}
-          </TabsContent>
-          <TabsContent value="mine" className="mt-5 space-y-3">
-            {mineActive.length === 0 ? <Empty icon={Send} text={t("vb_none_mine", lang)} /> :
-              mineActive.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />)}
-          </TabsContent>
-          <TabsContent value="cancelled" className="mt-5">{closedList}</TabsContent>
-        </Tabs>
-      ) : (
-        <div>
-          <div className="glass rounded-2xl p-6 mb-5 border border-amber-500/20">
-            <div className="flex items-start gap-3">
-              <Crown className="text-amber-300 shrink-0 mt-0.5" size={20} />
-              <div>
-                <div className="font-semibold text-white">Availability Calendar is a VIP feature</div>
-                <p className="text-sm text-slate-400 mt-1">Become a VIP to publish your availability and let members book exact time slots with you.</p>
-                <Button onClick={() => nav("/wallet?premium=1")} className="rose-btn text-white border-0 mt-3">Get VIP</Button>
-              </div>
-            </div>
-          </div>
-          <h2 className="font-serif-luxe text-xl mb-3 flex items-center gap-2"><Send size={18} className="text-rose-300" /> My date requests</h2>
-          <div className="space-y-3">
-            {mineActive.length === 0 ? <Empty icon={Send} text={t("vb_none_mine", lang)} /> :
-              mineActive.map((b) => <BookingCard key={b.id} b={b} who="outgoing" onCancel={cancel} onReschedule={setReschedule} onReload={load} busyId={busyId} />)}
-          </div>
-          <h2 className="font-serif-luxe text-xl mt-8 mb-3 flex items-center gap-2"><Ban size={18} className="text-slate-300" /> {t("vb_cancel_refused", lang)}</h2>
-          {closedList}
-        </div>
-      )}
 
       <CancelPreviewDialog open={!!cancelFor} onOpenChange={(o) => !o && setCancelFor(null)} total={cancelFor?.b.coins || 0}
         byRequester={cancelFor?.who === "outgoing"} onConfirm={() => { const id = cancelFor.b.id; setCancelFor(null); doCancel(id); }} />
