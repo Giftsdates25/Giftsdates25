@@ -4119,6 +4119,8 @@ async def vs_taxi_send(bid: str, user=Depends(get_current_user)):
     await spend_coins(user["id"], coins)
     await db.users.update_one({"id": b["vip_id"]}, {"$inc": {"escrow": coins}})
     sets = {"taxi.status": "sent", "taxi.sent_at": now}
+    if (b.get("pickup") or {}).get("status") in ("offered", "address_set"):
+        sets["pickup.status"] = "taxi_instead"
     auto = b["status"] == "pending"
     if auto:
         sets.update({"status": "confirmed", "confirmed_at": now, "auto_confirmed": True})
@@ -4148,46 +4150,56 @@ class VipPickupReq(BaseModel):
     time: Optional[str] = None  # HH:MM pick-up time, defaults to the date start
     note: Optional[str] = None
 
-@api.post("/vip/schedule/bookings/{bid}/pickup/propose")
-async def vs_pickup_propose(bid: str, req: VipPickupReq, user=Depends(get_current_user)):
-    """Inviter offers to pick the VIP up instead of paying the requested taxi fee."""
+async def _vs_pickup_booking(bid: str):
     b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
     if not b: raise HTTPException(404, "Not found")
-    if b["requester_id"] != user["id"]: raise HTTPException(403, "Only the inviter can offer a pick-up")
     if b["status"] not in ("pending", "confirmed"): raise HTTPException(400, "Only active dates")
+    return b
+
+@api.post("/vip/schedule/bookings/{bid}/pickup/offer")
+async def vs_pickup_offer(bid: str, user=Depends(get_current_user)):
+    """Step 1 — inviter offers to pick the VIP up instead of paying the requested taxi fee."""
+    b = await _vs_pickup_booking(bid)
+    if b["requester_id"] != user["id"]: raise HTTPException(403, "Only the inviter can offer a pick-up")
     if (b.get("taxi") or {}).get("status") != "pending": raise HTTPException(400, "NO_TAXI_REQUEST")
-    if not req.address.strip(): raise HTTPException(400, "ADDRESS_REQUIRED")
-    if (b.get("pickup") or {}).get("status") == "proposed": raise HTTPException(400, "PICKUP_PENDING")
-    tm = req.time if req.time and re.fullmatch(r"\d{2}:\d{2}", req.time) else b["start"]
-    pickup = {**req.model_dump(exclude={"time"}), "address": req.address.strip()[:300], "note": (req.note or "")[:300],
-              "time": tm, "status": "proposed", "proposed_at": datetime.now(timezone.utc).isoformat()}
+    if (b.get("pickup") or {}).get("status") in ("offered", "address_set"): raise HTTPException(400, "PICKUP_PENDING")
+    pickup = {"status": "offered", "offered_at": datetime.now(timezone.utc).isoformat()}
     await db.vip_sched.update_one({"id": bid}, {"$set": {"pickup": pickup}})
     await notify(b["vip_id"], "vs_pickup", "Pick-up offered 🚗",
-                 f"Instead of the taxi fee, {user['name']} offers to pick you up at {pickup['address']} at {tm} on {b['date']}. Accept or decline in VIP Bookings.",
+                 f"Instead of the taxi fee, {user['name']} offers to pick you up for your date on {b['date']} · {b['start']}. Add where you'd like to be picked up in VIP Bookings.",
+                 {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Add pick-up location")
+    return {"ok": True, "pickup": pickup}
+
+@api.post("/vip/schedule/bookings/{bid}/pickup/address")
+async def vs_pickup_address(bid: str, req: VipPickupReq, user=Depends(get_current_user)):
+    """Step 2 — the invited VIP fills in the desired pick-up location and time."""
+    b = await _vs_pickup_booking(bid)
+    if b["vip_id"] != user["id"]: raise HTTPException(403, "Only the invited VIP can set the pick-up location")
+    if (b.get("pickup") or {}).get("status") not in ("offered", "address_set"): raise HTTPException(400, "NO_PICKUP_OFFER")
+    if not req.address.strip(): raise HTTPException(400, "ADDRESS_REQUIRED")
+    tm = req.time if req.time and re.fullmatch(r"\d{2}:\d{2}", req.time) else b["start"]
+    pickup = {**b["pickup"], **req.model_dump(exclude={"time"}), "address": req.address.strip()[:300], "note": (req.note or "")[:300],
+              "time": tm, "status": "address_set", "address_at": datetime.now(timezone.utc).isoformat()}
+    await db.vip_sched.update_one({"id": bid}, {"$set": {"pickup": pickup}})
+    await notify(b["requester_id"], "vs_pickup", "Pick-up location added 📍",
+                 f"{user['name']} would like to be picked up at {pickup['address']} at {tm} on {b['date']}. Confirm the pick-up, send the taxi fee instead, or cancel the date in VIP Bookings.",
                  {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
     return {"ok": True, "pickup": pickup}
 
-@api.post("/vip/schedule/bookings/{bid}/pickup/{action}")
-async def vs_pickup_answer(bid: str, action: str, user=Depends(get_current_user)):
-    if action not in ("accept", "decline"): raise HTTPException(404, "Not found")
-    b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
-    if not b: raise HTTPException(404, "Not found")
-    if b["vip_id"] != user["id"]: raise HTTPException(403, "Only the VIP can answer")
-    if b["status"] not in ("pending", "confirmed") or (b.get("pickup") or {}).get("status") != "proposed": raise HTTPException(400, "No pending pick-up")
+@api.post("/vip/schedule/bookings/{bid}/pickup/accept")
+async def vs_pickup_accept(bid: str, user=Depends(get_current_user)):
+    """Step 3 — inviter confirms the pick-up location: taxi request withdrawn, date confirmed."""
+    b = await _vs_pickup_booking(bid)
+    if b["requester_id"] != user["id"]: raise HTTPException(403, "Only the inviter can confirm the pick-up")
+    if (b.get("pickup") or {}).get("status") != "address_set": raise HTTPException(400, "NO_PICKUP_ADDRESS")
     now = datetime.now(timezone.utc).isoformat()
-    if action == "accept":
-        sets = {"pickup.status": "accepted", "pickup.answered_at": now, "taxi.status": "replaced"}
-        if b["status"] == "pending":
-            sets.update({"status": "confirmed", "confirmed_at": now})
-        await db.vip_sched.update_one({"id": bid}, {"$set": sets})
-        await notify(b["requester_id"], "vs_pickup", "Pick-up accepted ✅",
-                     f"{user['name']} accepted your pick-up at {b['pickup']['address']} at {b['pickup']['time']} on {b['date']}. No taxi fee is needed and the date is confirmed.",
-                     {"booking_id": bid}, email=True)
-        return {"ok": True, "status": "confirmed"}
-    await db.vip_sched.update_one({"id": bid}, {"$set": {"pickup.status": "declined", "pickup.answered_at": now}})
-    await notify(b["requester_id"], "vs_pickup", "Pick-up declined",
-                 f"{user['name']} declined the pick-up for {b['date']} · {b['start']}. The taxi request is still open.", {"booking_id": bid})
-    return {"ok": True, "status": b["status"]}
+    sets = {"pickup.status": "accepted", "pickup.answered_at": now, "taxi.status": "replaced"}
+    if b["status"] == "pending":
+        sets.update({"status": "confirmed", "confirmed_at": now})
+    await db.vip_sched.update_one({"id": bid}, {"$set": sets})
+    await notify(b["vip_id"], "vs_pickup", "Pick-up confirmed ✅",
+                 f"{user['name']} will pick you up at {b['pickup']['address']} at {b['pickup']['time']} on {b['date']}. The date is confirmed.", {"booking_id": bid}, email=True)
+    return {"ok": True, "status": "confirmed"}
 
 # ---- Client reports a VIP no-show: full refund of date + taxi coins, evidence kept for admin review ----
 @api.post("/vip/schedule/bookings/{bid}/no-show")

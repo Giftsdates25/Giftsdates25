@@ -148,7 +148,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
         )}
       </div>
     </div>
-    <VipPickupBlock b={b} who={who} onDone={onReload} />
+    <VipPickupBlock b={b} who={who} onDone={onReload} onCancel={onCancel} />
     <VipTaxiBlock b={b} who={who} onDone={onReload} />
     </div>
   );

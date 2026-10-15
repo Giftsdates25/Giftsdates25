@@ -74,7 +74,7 @@ export default function VipTaxiBlock({ b, who, onDone }) {
           <TaxiRequestForm b={b} onDone={onDone} lang={lang} />
         </>
       )}
-      {who === "outgoing" && active && tx?.status === "pending" && (
+      {who === "outgoing" && active && tx?.status === "pending" && !["offered", "address_set"].includes(b.pickup?.status) && (
         <>
           <p className="text-xs text-slate-400">{t("vt_inviter_note", lang)}</p>
           <InviterTaxiActions b={b} onDone={onDone} lang={lang} />
