@@ -1,9 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Calendar, Clock, Loader2, Hourglass, Sparkles, MapPin } from "lucide-react";
+import { Calendar, Clock, Loader2, Hourglass, MapPin } from "lucide-react";
 import AddressPicker from "./AddressPicker";
 import { placeLabel } from "../lib/vipCatalog";
 import { toast } from "sonner";
@@ -48,7 +47,6 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
   const [startMin, setStartMin] = useState(null);
   const [length, setLength] = useState(1);
   const [extra, setExtra] = useState(0);
-  const [activity, setActivity] = useState("");
   const [place, setPlace] = useState(null);
   const [loc, setLoc] = useState({});
   const [busy, setBusy] = useState(false);
@@ -67,7 +65,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
   useEffect(() => {
     if (!open) return;
     const h = rescheduleHours || 1;
-    setStartMin(null); setLength(Math.min(3, h)); setExtra(Math.max(0, h - 3)); setActivity(""); setPlace(null); setLoc({}); load();
+    setStartMin(null); setLength(Math.min(3, h)); setExtra(Math.max(0, h - 3)); setPlace(null); setLoc({}); load();
   }, [open, load, rescheduleHours]);
 
   const dayObj = (data.days || []).find((d) => d.date === day);
@@ -88,7 +86,7 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
         await api.post(`/vip/schedule/bookings/${rescheduleId}/reschedule`, { date: day, start: slot.start, end: slot.end });
         toast.success(t("bk_resched_sent", lang));
       } else {
-        await api.post(`/vip/schedule/${target.id}/book`, { date: day, start: slot.start, end: slot.end, length, activity, venue: activity || (place ? placeLabel(place, lang) : ""), tz: dayObj?.tz,
+        await api.post(`/vip/schedule/${target.id}/book`, { date: day, start: slot.start, end: slot.end, length, venue: place ? placeLabel(place, lang) : "", tz: dayObj?.tz,
           place, ...(place && place !== "own" ? { address: loc.address || "", city: loc.city || "", postal_code: loc.postal_code || "", country: loc.country || "", lat: loc.lat ?? null, lng: loc.lng ?? null } : {}) });
         toast.success(t("bk_sent", lang));
       }
@@ -163,11 +161,6 @@ export default function VipDateBookModal({ open, onOpenChange, target, reschedul
                   </div>
                   {place === "own" && <p className="mt-2 text-[11px] text-sky-300 flex items-start gap-1" data-testid="vs-book-own-note"><MapPin size={11} className="mt-0.5 shrink-0" /> {t("own_addr_auto", lang)}</p>}
                   {place && place !== "own" && <div className="mt-2.5" data-testid="vs-book-address"><AddressPicker value={loc} onChange={setLoc} /></div>}
-                </Step>
-              )}
-              {!isReschedule && (
-                <Step n={++n} icon={Sparkles} title={t("bk_activity", lang)} testid="vs-book-step-details">
-                  <Input data-testid="vs-book-activity" value={activity} onChange={(e) => setActivity(e.target.value)} placeholder={t("bk_activity_ph", lang)} className="bg-white/5 border-white/10" />
                 </Step>
               )}
               <div className="text-xs text-slate-400 glass rounded-lg p-3">{t(isReschedule ? "bk_resched_note" : "bk_escrow_note", lang)}</div>
