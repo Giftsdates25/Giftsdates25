@@ -6,7 +6,7 @@ import { api } from "../lib/api";
 import { useApp } from "../context/AppContext";
 import { t } from "../lib/i18n";
 
-const MINUTES = [5, 10, 15, 30, 45, 60];
+const MINUTES = [5, 10, 15, 20, 30, 45, 60];
 
 export default function RunningLateButton({ b, onDone }) {
   const { lang } = useApp();
@@ -26,7 +26,7 @@ export default function RunningLateButton({ b, onDone }) {
       </PopoverTrigger>
       <PopoverContent className="bg-[#161320] border-white/10 text-white w-64" data-testid={`vs-late-panel-${b.id}`}>
         <p className="text-xs text-slate-400 mb-2.5">{t("lt_title", lang)}</p>
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-4 gap-1.5">
           {MINUTES.map((m) => (
             <button key={m} type="button" disabled={!!busy} onClick={() => send(m)} data-testid={`vs-late-${b.id}-${m}`}
               className="h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-amber-500/20 hover:border-amber-500/40 text-sm font-mono-num transition-colors disabled:opacity-50">

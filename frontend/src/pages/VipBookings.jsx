@@ -232,13 +232,13 @@ export default function VipBookings() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
-      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-5 mb-6">
+      <header className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 mb-6">
         <div>
           <div className="text-[11px] uppercase tracking-[0.25em] text-amber-300/80 mb-1.5">GiftsDates · VIP</div>
           <h1 className="font-serif-luxe text-4xl gold-text flex items-center gap-2.5"><Crown size={28} className="text-amber-300" /> {t("vb_title", lang)}</h1>
           <p className="text-sm text-slate-400 mt-1.5">{t("vb_intro", lang)}</p>
         </div>
-        <div className="flex flex-wrap gap-2 md:justify-end">
+        <div className="flex flex-wrap gap-2 lg:justify-end">
         {isVip && (
           <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-transparent px-4 py-2.5 min-w-[220px]" data-testid="vs-earnings-tile">
             <div className="text-[10px] uppercase tracking-wider text-amber-300/80">{t("er_month", lang)}</div>
@@ -246,7 +246,7 @@ export default function VipBookings() {
             <div className="text-[11px] text-slate-400 mt-1" data-testid="vs-earnings-held">🔒 {earn.held.toLocaleString()} · {t("er_held", lang)}</div>
           </div>
         )}
-        <div className={`grid gap-2 ${stats.length === 4 ? "grid-cols-4" : "grid-cols-2"}`} data-testid="vs-stats">
+        <div className={`grid gap-2 ${stats.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"}`} data-testid="vs-stats">
           {stats.map(([label, n, c]) => (
             <div key={label} className="rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 min-w-[92px]">
               <div className={`font-mono-num text-2xl leading-none ${c}`}>{n}</div>
