@@ -23,7 +23,6 @@ import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
 import { MapsLink } from "../components/AddressPicker";
 import { placeLabel } from "../lib/vipCatalog";
-import DateBookingList from "../components/DateBookingList";
 import CancelledDates from "../components/CancelledDates";
 
 const fmtDay = (d) => { try { const [y, m, dd] = d.split("-").map(Number); return new Date(y, m - 1, dd).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }); } catch { return d; } };
@@ -281,10 +280,6 @@ export default function VipBookings() {
         ))}
       </Tabs>
 
-      <section className="mt-12" data-testid="vip-escrow-dates">
-        <h2 className="font-serif-luxe text-xl mb-3 flex items-center gap-2 text-slate-200"><Crown size={18} className="text-amber-300" /> {t("vb_vip_dates", lang)}</h2>
-        <DateBookingList mode="vip" />
-      </section>
 
       <CancelPreviewDialog open={!!cancelFor} onOpenChange={(o) => !o && setCancelFor(null)} total={cancelFor?.b.coins || 0} taxi={cancelFor?.b.taxi_coins || 0}
         byRequester={cancelFor?.who === "outgoing"} onConfirm={() => { const id = cancelFor.b.id; setCancelFor(null); doCancel(id); }} />
