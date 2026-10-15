@@ -15,6 +15,8 @@ import DirectionsButton from "../components/DirectionsButton";
 import VipTaxiBlock from "../components/VipTaxiBlock";
 import VipPickupBlock from "../components/VipPickupBlock";
 import ArrivedButton from "../components/ArrivedButton";
+import TodayStrip from "../components/TodayStrip";
+import RunningLateButton from "../components/RunningLateButton";
 import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
 import { MapsLink } from "../components/AddressPicker";
@@ -88,6 +90,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
   const now = Date.now();
   const live = b.status === "confirmed" && now >= start.getTime() && now < end.getTime();
   const checkInOpen = b.status === "confirmed" && now >= start.getTime() - 2 * 3600000 && now < end.getTime();
+  const lateOpen = b.status === "confirmed" && now >= start.getTime() - 3 * 3600000 && now < end.getTime();
   return (
     <div className={`glass rounded-2xl p-4 border-s-2 ${ACCENT[b.status] || "border-s-white/10"} transition-colors hover:bg-white/[0.04]`} data-testid={`vs-booking-${b.id}`}>
     <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -110,6 +113,8 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
         {b.status === "confirmed" && <AddToCalendar id={b.id} title={`GiftsDates VIP: ${b.activity || card?.name || "Date"}`} place={[b.location?.address, b.location?.city].filter(Boolean).join(", ") || b.venue || b.activity} start={start} end={end} link="/vip-bookings" />}
         {b.status === "confirmed" && b.location?.address && <DirectionsButton loc={b.location} testid={`vs-directions-${b.id}`} />}
         {who === "outgoing" && checkInOpen && !b.arrived_at && <ArrivedButton b={b} onDone={onReload} />}
+        {who === "incoming" && lateOpen && <RunningLateButton b={b} onDone={onReload} />}
+        {b.late && b.status === "confirmed" && <span className="inline-flex items-center h-9 px-3 rounded-md text-xs bg-amber-500/15 border border-amber-500/40 text-amber-200" data-testid={`vs-late-badge-${b.id}`}>⏱ {t("lt_badge", lang).replace("{m}", b.late.minutes)}</span>}
         {b.arrived_at && <span className="inline-flex items-center h-9 px-3 rounded-md text-xs bg-emerald-500/15 border border-emerald-500/40 text-emerald-200" data-testid={`vs-arrived-badge-${b.id}`}>📍 {t("ar_arrived_at", lang).replace("{t}", new Date(b.arrived_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>}
         {who === "outgoing" && live && <ExtendDateButton id={b.id} url={`/vip/schedule/bookings/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={onReload} />}
         <div className="text-right me-1">
@@ -219,6 +224,8 @@ export default function VipBookings() {
     ...(isVip ? [{ v: "past", label: t("vb_past", lang), icon: Calendar, n: past.length, body: past.length ? cards(past, "incoming") : <Empty icon={Calendar} text={t("vb_none_past", lang)} /> }] : []),
     { v: "availability", label: t("vb_availability", lang), icon: CalendarDays, body: isVip ? <VipAvailabilityEditor blocks={sched?.blocks || []} onChanged={load} /> : <VipUpsell onGo={() => nav("/wallet?premium=1")} /> },
   ];
+  const earn = sched?.earnings || { earned: 0, held: 0 };
+  const todayItems = [...pending.map((b) => ({ b, who: "incoming" })), ...confirmed.map((b) => ({ b, who: "incoming" })), ...past.map((b) => ({ b, who: "incoming" })), ...mineActive.map((b) => ({ b, who: "outgoing" }))];
   const stats = isVip
     ? [[t("vb_requests", lang), pending.length, "text-rose-300"], [t("vb_confirmed", lang), confirmed.length, "text-emerald-300"], [t("vb_mine", lang), mineActive.length, "text-sky-300"], [t("vb_past", lang), past.length, "text-slate-300"]]
     : [[t("vb_mine", lang), mineActive.length, "text-sky-300"], [t("vb_cancel_refused", lang), closedCount, "text-slate-300"]];
@@ -231,6 +238,14 @@ export default function VipBookings() {
           <h1 className="font-serif-luxe text-4xl gold-text flex items-center gap-2.5"><Crown size={28} className="text-amber-300" /> {t("vb_title", lang)}</h1>
           <p className="text-sm text-slate-400 mt-1.5">{t("vb_intro", lang)}</p>
         </div>
+        <div className="flex flex-wrap gap-2 md:justify-end">
+        {isVip && (
+          <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-transparent px-4 py-2.5 min-w-[220px]" data-testid="vs-earnings-tile">
+            <div className="text-[10px] uppercase tracking-wider text-amber-300/80">{t("er_month", lang)}</div>
+            <div className="font-mono-num text-2xl leading-tight text-amber-200 mt-0.5" data-testid="vs-earnings-month">🪙 {earn.earned.toLocaleString()}</div>
+            <div className="text-[11px] text-slate-400 mt-1" data-testid="vs-earnings-held">🔒 {earn.held.toLocaleString()} · {t("er_held", lang)}</div>
+          </div>
+        )}
         <div className={`grid gap-2 ${stats.length === 4 ? "grid-cols-4" : "grid-cols-2"}`} data-testid="vs-stats">
           {stats.map(([label, n, c]) => (
             <div key={label} className="rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 min-w-[92px]">
@@ -239,7 +254,10 @@ export default function VipBookings() {
             </div>
           ))}
         </div>
+        </div>
       </header>
+
+      <TodayStrip items={todayItems} />
 
       <Tabs defaultValue={tabs[0].v} className="w-full">
         <div className="sticky top-16 z-20 -mx-4 px-4 py-2 bg-[#0D0B12]/85 backdrop-blur-xl border-b border-white/10">
