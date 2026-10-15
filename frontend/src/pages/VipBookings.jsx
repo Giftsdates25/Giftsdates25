@@ -13,6 +13,8 @@ import AddToCalendar from "../components/AddToCalendar";
 import CancelPreviewDialog from "../components/CancelPreviewDialog";
 import DirectionsButton from "../components/DirectionsButton";
 import VipTaxiBlock from "../components/VipTaxiBlock";
+import VipPickupBlock from "../components/VipPickupBlock";
+import ArrivedButton from "../components/ArrivedButton";
 import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
 import { MapsLink } from "../components/AddressPicker";
@@ -69,6 +71,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
   const { start, end } = bookingTimes(b);
   const now = Date.now();
   const live = b.status === "confirmed" && now >= start.getTime() && now < end.getTime();
+  const checkInOpen = b.status === "confirmed" && now >= start.getTime() - 2 * 3600000 && now < end.getTime();
   return (
     <div className="glass rounded-2xl p-4" data-testid={`vs-booking-${b.id}`}>
     <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -90,6 +93,8 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         {b.status === "confirmed" && <AddToCalendar id={b.id} title={`GiftsDates VIP: ${b.activity || card?.name || "Date"}`} place={[b.location?.address, b.location?.city].filter(Boolean).join(", ") || b.venue || b.activity} start={start} end={end} link="/vip-bookings" />}
         {b.status === "confirmed" && b.location?.address && <DirectionsButton loc={b.location} testid={`vs-directions-${b.id}`} />}
+        {who === "outgoing" && checkInOpen && !b.arrived_at && <ArrivedButton b={b} onDone={onReload} />}
+        {b.arrived_at && <span className="inline-flex items-center h-9 px-3 rounded-md text-xs bg-emerald-500/15 border border-emerald-500/40 text-emerald-200" data-testid={`vs-arrived-badge-${b.id}`}>📍 {t("ar_arrived_at", lang).replace("{t}", new Date(b.arrived_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>}
         {who === "outgoing" && live && <ExtendDateButton id={b.id} url={`/vip/schedule/bookings/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={onReload} />}
         <div className="text-right me-1">
           <div className="text-amber-300 font-mono-num text-sm">🪙 {b.coins}</div>
@@ -118,6 +123,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
         )}
       </div>
     </div>
+    <VipPickupBlock b={b} who={who} onDone={onReload} />
     <VipTaxiBlock b={b} who={who} onDone={onReload} />
     </div>
   );
