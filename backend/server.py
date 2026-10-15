@@ -3894,16 +3894,24 @@ async def vs_my_schedule(user=Depends(get_current_user)):
 
 async def _vs_earnings(vip_id: str, bookings: list) -> dict:
     """Coins earned this calendar month (completed dates + late-cancel compensation) and coins still held in escrow."""
-    month = datetime.now(timezone.utc).strftime("%Y-%m")
-    earned = sum(int(b.get("coins") or 0) for b in bookings if b["status"] == "completed" and str(b.get("completed_at", "")).startswith(month))
-    earned += sum(int(b.get("compensation") or 0) for b in bookings if b["status"] == "cancelled" and str(b.get("cancelled_at", "")).startswith(month))
+    now = datetime.now(timezone.utc)
+    months = []
+    y, m = now.year, now.month
+    for _ in range(6):
+        months.insert(0, f"{y:04d}-{m:02d}")
+        y, m = (y, m - 1) if m > 1 else (y - 1, 12)
+    by = {k: 0 for k in months}
+    def add(ts, n):
+        k = str(ts or "")[:7]
+        if k in by: by[k] += int(n or 0)
+    for b in bookings:
+        if b["status"] == "completed": add(b.get("completed_at"), b.get("coins"))
+        elif b["status"] == "cancelled": add(b.get("cancelled_at"), b.get("compensation"))
     held = sum(int(b.get("coins") or 0) for b in bookings if b["status"] in ("pending", "confirmed"))
     async for d in db.date_bookings.find({"to_id": vip_id, "vip": True}, {"_id": 0, "status": 1, "coins": 1, "released_net": 1, "released_at": 1}):
-        if d["status"] == "released" and str(d.get("released_at", "")).startswith(month):
-            earned += int(d.get("released_net") or 0)
-        elif d["status"] in ("escrow", "accepted", "confirmed"):
-            held += int(d.get("coins") or 0)
-    return {"month": month, "earned": earned, "held": held}
+        if d["status"] == "released": add(d.get("released_at"), d.get("released_net"))
+        elif d["status"] in ("escrow", "accepted", "confirmed"): held += int(d.get("coins") or 0)
+    return {"month": months[-1], "earned": by[months[-1]], "held": held, "by_month": [{"month": k, "earned": by[k]} for k in months]}
 
 @api.get("/vip/schedule/pending-count")
 async def vs_pending_count(user=Depends(get_current_user)):
@@ -4142,18 +4150,20 @@ class VipPickupReq(BaseModel):
 
 @api.post("/vip/schedule/bookings/{bid}/pickup/propose")
 async def vs_pickup_propose(bid: str, req: VipPickupReq, user=Depends(get_current_user)):
+    """Inviter offers to pick the VIP up instead of paying the requested taxi fee."""
     b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
     if not b: raise HTTPException(404, "Not found")
-    if b["vip_id"] != user["id"]: raise HTTPException(403, "Only the invited VIP can propose a pick-up")
-    if b["status"] != "pending": raise HTTPException(400, "Only pending dates")
+    if b["requester_id"] != user["id"]: raise HTTPException(403, "Only the inviter can offer a pick-up")
+    if b["status"] not in ("pending", "confirmed"): raise HTTPException(400, "Only active dates")
+    if (b.get("taxi") or {}).get("status") != "pending": raise HTTPException(400, "NO_TAXI_REQUEST")
     if not req.address.strip(): raise HTTPException(400, "ADDRESS_REQUIRED")
     if (b.get("pickup") or {}).get("status") == "proposed": raise HTTPException(400, "PICKUP_PENDING")
     tm = req.time if req.time and re.fullmatch(r"\d{2}:\d{2}", req.time) else b["start"]
     pickup = {**req.model_dump(exclude={"time"}), "address": req.address.strip()[:300], "note": (req.note or "")[:300],
               "time": tm, "status": "proposed", "proposed_at": datetime.now(timezone.utc).isoformat()}
     await db.vip_sched.update_one({"id": bid}, {"$set": {"pickup": pickup}})
-    await notify(b["requester_id"], "vs_pickup", "Pick-up proposed 🚗",
-                 f"{user['name']} would like you to pick them up at {pickup['address']} at {tm} on {b['date']} instead of meeting at the place. Accept or decline in VIP Bookings.",
+    await notify(b["vip_id"], "vs_pickup", "Pick-up offered 🚗",
+                 f"Instead of the taxi fee, {user['name']} offers to pick you up at {pickup['address']} at {tm} on {b['date']}. Accept or decline in VIP Bookings.",
                  {"booking_id": bid}, email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
     return {"ok": True, "pickup": pickup}
 
@@ -4162,17 +4172,22 @@ async def vs_pickup_answer(bid: str, action: str, user=Depends(get_current_user)
     if action not in ("accept", "decline"): raise HTTPException(404, "Not found")
     b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
     if not b: raise HTTPException(404, "Not found")
-    if b["requester_id"] != user["id"]: raise HTTPException(403, "Only the inviter can answer")
-    if b["status"] != "pending" or (b.get("pickup") or {}).get("status") != "proposed": raise HTTPException(400, "No pending pick-up")
+    if b["vip_id"] != user["id"]: raise HTTPException(403, "Only the VIP can answer")
+    if b["status"] not in ("pending", "confirmed") or (b.get("pickup") or {}).get("status") != "proposed": raise HTTPException(400, "No pending pick-up")
     now = datetime.now(timezone.utc).isoformat()
     if action == "accept":
-        await db.vip_sched.update_one({"id": bid}, {"$set": {"pickup.status": "accepted", "pickup.answered_at": now, "status": "confirmed", "confirmed_at": now}})
-        await notify(b["vip_id"], "vs_pickup", "Pick-up accepted ✅",
-                     f"{user['name']} will pick you up at {b['pickup']['address']} at {b['pickup']['time']} on {b['date']}. The date is confirmed.", {"booking_id": bid}, email=True)
+        sets = {"pickup.status": "accepted", "pickup.answered_at": now, "taxi.status": "replaced"}
+        if b["status"] == "pending":
+            sets.update({"status": "confirmed", "confirmed_at": now})
+        await db.vip_sched.update_one({"id": bid}, {"$set": sets})
+        await notify(b["requester_id"], "vs_pickup", "Pick-up accepted ✅",
+                     f"{user['name']} accepted your pick-up at {b['pickup']['address']} at {b['pickup']['time']} on {b['date']}. No taxi fee is needed and the date is confirmed.",
+                     {"booking_id": bid}, email=True)
         return {"ok": True, "status": "confirmed"}
     await db.vip_sched.update_one({"id": bid}, {"$set": {"pickup.status": "declined", "pickup.answered_at": now}})
-    await notify(b["vip_id"], "vs_pickup", "Pick-up declined", f"{user['name']} declined the pick-up for {b['date']} · {b['start']}. You can still confirm or decline the date.", {"booking_id": bid})
-    return {"ok": True, "status": "pending"}
+    await notify(b["requester_id"], "vs_pickup", "Pick-up declined",
+                 f"{user['name']} declined the pick-up for {b['date']} · {b['start']}. The taxi request is still open.", {"booking_id": bid})
+    return {"ok": True, "status": b["status"]}
 
 # ---- VIP running late: instant heads-up to the client ----
 class VipLateReq(BaseModel):

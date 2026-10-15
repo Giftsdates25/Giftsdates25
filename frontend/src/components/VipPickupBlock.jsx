@@ -11,7 +11,7 @@ import { t } from "../lib/i18n";
 
 const errMsg = (e, lang) => {
   const d = e.response?.data?.detail || "";
-  return d === "ADDRESS_REQUIRED" ? t("pu_addr_err", lang) : d === "PICKUP_PENDING" ? t("pu_pending_err", lang) : d || "Error";
+  return d === "ADDRESS_REQUIRED" ? t("pu_addr_err", lang) : d === "PICKUP_PENDING" ? t("pu_pending_err", lang) : d === "NO_TAXI_REQUEST" ? t("pu_no_taxi_err", lang) : d || "Error";
 };
 
 function ProposeForm({ b, onDone, onClose, lang }) {
@@ -73,7 +73,7 @@ export default function VipPickupBlock({ b, who, onDone }) {
   const { lang } = useApp();
   const [open, setOpen] = useState(false);
   const pu = b.pickup;
-  const canPropose = who === "incoming" && b.status === "pending" && (!pu || pu.status === "declined");
+  const canPropose = who === "outgoing" && ["pending", "confirmed"].includes(b.status) && b.taxi?.status === "pending" && (!pu || pu.status === "declined");
   if (!pu && !canPropose) return null;
   const addr = pu && [pu.address, pu.postal_code, pu.city, pu.country].filter(Boolean).join(", ");
   return (
@@ -85,7 +85,7 @@ export default function VipPickupBlock({ b, who, onDone }) {
           {pu.note ? <div className="text-slate-400 italic">“{pu.note}”</div> : null}
         </div>
       )}
-      {who === "outgoing" && pu?.status === "proposed" && b.status === "pending" && <Answer b={b} onDone={onDone} lang={lang} />}
+      {who === "incoming" && pu?.status === "proposed" && ["pending", "confirmed"].includes(b.status) && <Answer b={b} onDone={onDone} lang={lang} />}
       {who === "outgoing" && pu?.status === "accepted" && b.status === "confirmed" && <DirectionsButton loc={pu} testid={`vs-pickup-directions-${b.id}`} />}
       {canPropose && (open ? <ProposeForm b={b} onDone={onDone} onClose={() => setOpen(false)} lang={lang} /> : (
         <Button data-testid={`vs-pickup-propose-${b.id}`} size="sm" variant="outline" onClick={() => setOpen(true)} className="bg-white/5 border-sky-500/40 text-sky-200 hover:bg-sky-500/10 h-9">

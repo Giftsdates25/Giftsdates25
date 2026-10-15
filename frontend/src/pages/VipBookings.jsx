@@ -16,6 +16,7 @@ import VipTaxiBlock from "../components/VipTaxiBlock";
 import VipPickupBlock from "../components/VipPickupBlock";
 import ArrivedButton from "../components/ArrivedButton";
 import TodayStrip from "../components/TodayStrip";
+import EarningsChart from "../components/EarningsChart";
 import RunningLateButton from "../components/RunningLateButton";
 import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
@@ -232,24 +233,25 @@ export default function VipBookings() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
-      <header className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 mb-6">
+      <header className="space-y-5 mb-6">
         <div>
           <div className="text-[11px] uppercase tracking-[0.25em] text-amber-300/80 mb-1.5">GiftsDates · VIP</div>
           <h1 className="font-serif-luxe text-4xl gold-text flex items-center gap-2.5"><Crown size={28} className="text-amber-300" /> {t("vb_title", lang)}</h1>
           <p className="text-sm text-slate-400 mt-1.5">{t("vb_intro", lang)}</p>
         </div>
-        <div className="flex flex-wrap gap-2 lg:justify-end">
+        <div className={`grid gap-2 ${isVip ? "grid-cols-2 sm:grid-cols-6" : "grid-cols-2 sm:grid-cols-4"}`}>
         {isVip && (
-          <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-transparent px-4 py-2.5 min-w-[220px]" data-testid="vs-earnings-tile">
+          <div className="col-span-2 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-transparent px-4 py-2.5" data-testid="vs-earnings-tile">
             <div className="text-[10px] uppercase tracking-wider text-amber-300/80">{t("er_month", lang)}</div>
             <div className="font-mono-num text-2xl leading-tight text-amber-200 mt-0.5" data-testid="vs-earnings-month">🪙 {earn.earned.toLocaleString()}</div>
             <div className="text-[11px] text-slate-400 mt-1" data-testid="vs-earnings-held">🔒 {earn.held.toLocaleString()} · {t("er_held", lang)}</div>
+            {earn.by_month?.length > 0 && <EarningsChart data={earn.by_month} />}
           </div>
         )}
-        <div className={`grid gap-2 ${stats.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"}`} data-testid="vs-stats">
+        <div className="contents" data-testid="vs-stats">
           {stats.map(([label, n, c]) => (
-            <div key={label} className="rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 min-w-[92px]">
-              <div className={`font-mono-num text-2xl leading-none ${c}`}>{n}</div>
+            <div key={label} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 flex flex-col justify-center gap-2">
+              <div className={`font-mono-num text-4xl leading-none ${c}`}>{n}</div>
               <div className="text-[10px] uppercase tracking-wider text-slate-500 mt-1.5 truncate">{label}</div>
             </div>
           ))}
