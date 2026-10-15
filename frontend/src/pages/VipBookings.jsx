@@ -12,6 +12,7 @@ import VipDateBookModal from "../components/VipDateBookModal";
 import AddToCalendar from "../components/AddToCalendar";
 import CancelPreviewDialog from "../components/CancelPreviewDialog";
 import DirectionsButton from "../components/DirectionsButton";
+import VipTaxiBlock from "../components/VipTaxiBlock";
 import ExtendDateButton from "../components/ExtendDateButton";
 import { t } from "../lib/i18n";
 import { MapsLink } from "../components/AddressPicker";
@@ -69,7 +70,8 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
   const now = Date.now();
   const live = b.status === "confirmed" && now >= start.getTime() && now < end.getTime();
   return (
-    <div className="glass rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4" data-testid={`vs-booking-${b.id}`}>
+    <div className="glass rounded-2xl p-4" data-testid={`vs-booking-${b.id}`}>
+    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <Avatar card={card} />
         <div className="min-w-0">
@@ -115,6 +117,8 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
           </>
         )}
       </div>
+    </div>
+    <VipTaxiBlock b={b} who={who} onDone={onReload} />
     </div>
   );
 }
@@ -217,11 +221,11 @@ export default function VipBookings() {
 
           <TabsContent value="requests" className="mt-5 space-y-3">
             {pending.length === 0 ? <Empty icon={Inbox} text={t("vb_none_pending", lang)} /> :
-              pending.map((b) => <BookingCard key={b.id} b={b} who="incoming" onConfirm={confirm} onDecline={decline} onCancel={cancel} busyId={busyId} />)}
+              pending.map((b) => <BookingCard key={b.id} b={b} who="incoming" onConfirm={confirm} onDecline={decline} onCancel={cancel} onReload={load} busyId={busyId} />)}
           </TabsContent>
           <TabsContent value="confirmed" className="mt-5 space-y-3">
             {confirmed.length === 0 ? <Empty icon={CalendarClock} text={t("vb_none_confirmed", lang)} /> :
-              confirmed.map((b) => <BookingCard key={b.id} b={b} who="incoming" onConfirm={confirm} onDecline={decline} onCancel={cancel} busyId={busyId} />)}
+              confirmed.map((b) => <BookingCard key={b.id} b={b} who="incoming" onConfirm={confirm} onDecline={decline} onCancel={cancel} onReload={load} busyId={busyId} />)}
           </TabsContent>
           <TabsContent value="past" className="mt-5 space-y-3">
             {past.length === 0 ? <Empty icon={Calendar} text={t("vb_none_past", lang)} /> :

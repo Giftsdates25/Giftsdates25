@@ -4068,6 +4068,54 @@ async def vs_decline(bid: str, user=Depends(get_current_user)):
                  {"booking_id": bid}, email=True)
     return {"status": "declined", "refunded": b.get("coins", 0)}
 
+# ---- Taxi for VIP calendar bookings: VIP requests, requester pays (held in escrow with the date coins) ----
+@api.post("/vip/schedule/bookings/{bid}/taxi/request")
+async def vs_taxi_request(bid: str, req: TaxiRequestReq, user=Depends(get_current_user)):
+    b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
+    if not b: raise HTTPException(404, "Not found")
+    if b["vip_id"] != user["id"]: raise HTTPException(403, "Only the invited VIP can request a taxi")
+    if b["status"] not in ("pending", "confirmed"): raise HTTPException(400, "Cannot request taxi")
+    if req.coins < 1: raise HTTPException(400, "Invalid amount")
+    if (b.get("taxi") or {}).get("status") in ("pending", "sent"): raise HTTPException(400, "TAXI_PENDING")
+    taxi = {"coins": int(req.coins), "status": "pending", "requested_at": datetime.now(timezone.utc).isoformat()}
+    await db.vip_sched.update_one({"id": bid}, {"$set": {"taxi": taxi}})
+    await notify(b["requester_id"], "vs_taxi", "Taxi requested 🚕",
+                 f"{user['name']} asks for 🪙 {req.coins} for a taxi to and from your date on {b['date']} · {b['start']}. Send it in VIP Bookings.",
+                 {"booking_id": bid, "coins": req.coins}, email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
+    return {"ok": True, "taxi": taxi}
+
+@api.post("/vip/schedule/bookings/{bid}/taxi/send")
+async def vs_taxi_send(bid: str, user=Depends(get_current_user)):
+    b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
+    if not b: raise HTTPException(404, "Not found")
+    if b["requester_id"] != user["id"]: raise HTTPException(403, "Only the inviter can send a taxi")
+    if b["status"] not in ("pending", "confirmed"): raise HTTPException(400, "Cannot send taxi")
+    taxi = b.get("taxi") or {}
+    if taxi.get("status") != "pending": raise HTTPException(400, "No pending taxi request")
+    coins = int(taxi["coins"])
+    if (user.get("coins", 0) + user.get("withdrawable", 0)) < coins: raise HTTPException(400, "Insufficient coins")
+    now = datetime.now(timezone.utc).isoformat()
+    await spend_coins(user["id"], coins)
+    await db.users.update_one({"id": b["vip_id"]}, {"$inc": {"escrow": coins}})
+    sets = {"taxi.status": "sent", "taxi.sent_at": now}
+    auto = b["status"] == "pending"
+    if auto:
+        sets.update({"status": "confirmed", "confirmed_at": now, "auto_confirmed": True})
+    await db.vip_sched.update_one({"id": bid}, {"$set": sets, "$inc": {"coins": coins, "taxi_coins": coins}})
+    await notify(b["vip_id"], "vs_taxi", "🚕 Taxi sent", f"{user['name']} sent 🪙 {coins} for your taxi." + (" The date is now confirmed." if auto else ""),
+                 {"booking_id": bid, "coins": coins}, email=True)
+    return {"ok": True, "coins": coins, "auto_confirmed": auto}
+
+@api.post("/vip/schedule/bookings/{bid}/taxi/decline")
+async def vs_taxi_decline(bid: str, user=Depends(get_current_user)):
+    b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
+    if not b: raise HTTPException(404, "Not found")
+    if b["requester_id"] != user["id"]: raise HTTPException(403, "Only the inviter can decline")
+    if (b.get("taxi") or {}).get("status") != "pending": raise HTTPException(400, "No pending taxi request")
+    await db.vip_sched.update_one({"id": bid}, {"$set": {"taxi.status": "declined", "taxi.declined_at": datetime.now(timezone.utc).isoformat()}})
+    await notify(b["vip_id"], "vs_taxi", "Taxi request declined", f"{user['name']} declined your taxi request for {b['date']} · {b['start']}.", {"booking_id": bid})
+    return {"ok": True}
+
 @api.post("/vip/schedule/bookings/{bid}/cancel")
 async def vs_cancel(bid: str, user=Depends(get_current_user)):
     b = await db.vip_sched.find_one({"id": bid})
