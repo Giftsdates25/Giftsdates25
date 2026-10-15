@@ -79,7 +79,7 @@ export default function VipPickupBlock({ b, who, onDone }) {
   return (
     <div className="w-full mt-3 rounded-xl border border-sky-500/25 bg-sky-500/5 p-3 space-y-2" data-testid={`vs-pickup-${b.id}`}>
       {pu && (
-        <div className="text-xs text-sky-100 space-y-1" data-testid={`vs-pickup-status-${b.id}`}>
+        <div className={`text-xs space-y-1 ${pu.status === "declined" ? "text-slate-500 line-through decoration-slate-600" : "text-sky-100"}`} data-testid={`vs-pickup-status-${b.id}`}>
           <div className="flex items-center gap-1.5 font-semibold"><Car size={13} /> {t(`pu_st_${pu.status}`, lang)}</div>
           <div className="flex items-start gap-1.5 text-slate-300"><MapPin size={12} className="mt-0.5 shrink-0" /> {addr} · {t("pu_time", lang)} {pu.time}</div>
           {pu.note ? <div className="text-slate-400 italic">“{pu.note}”</div> : null}
