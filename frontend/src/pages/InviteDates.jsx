@@ -17,6 +17,7 @@ import LiveLocation from "../components/LiveLocation";
 import DateReportForm, { DateStartedNote, ReportReplyBlock } from "../components/DateReportForm";
 import { matchesFilter, countByFilter } from "../lib/dateFilters";
 import AddToCalendar from "../components/AddToCalendar";
+import CancelPreviewDialog from "../components/CancelPreviewDialog";
 
 const FALLBACK = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&q=80";
 const TERMINAL = ["COMPLETED", "COMPLETED_AUTO", "CANCELLED", "CANCELLED_TRANSPORTATION", "REFUNDED"];
@@ -147,7 +148,7 @@ function DateCard({ d, reload }) {
     const tp = d.transportation || {};
     const taxi = tp.type === "taxi" && tp.status === "confirmed" ? Math.min(total, Number(tp.taxi_amount || 0)) : 0;
     const base = total - taxi, inv = Math.floor(base / 2), rec = Math.floor(base / 4);
-    return { total, inv: inv + taxi, rec, fee: base - inv - rec };
+    return { total, taxi, inv: inv + taxi, rec, fee: base - inv - rec };
   };
   const refuseWarningText = () => {
     const { total, inv, rec, fee } = refuseSplit();
@@ -164,16 +165,11 @@ function DateCard({ d, reload }) {
     const total = Number(d.total_hold || d.coins || 0);
     if (window.confirm(tr("id_reject_date_warning", { total }) + "\n\n" + tr("id_reject_location_confirm"))) act(() => post("/pickup/reject"));
   };
-  const cancelDate = () => {
-    const total = Number(d.total_hold || d.coins || 0);
-    let msg;
-    if (isInv) {
-      const { inv, rec, fee } = refuseSplit();
-      msg = tr("id_cancel_split_warning", { total, inv, rec, fee });
-    } else {
-      msg = tr("id_reject_date_note", { total });
-    }
-    if (window.confirm(msg + "\n\n" + tr("id_reject_location_confirm"))) act(() => post("/cancel"));
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const cancelDate = () => setCancelOpen(true);
+  const cancelInfo = () => {
+    const { total, inv, rec, fee, taxi } = refuseSplit();
+    return { total, taxi, split: isInv ? { refund: inv, comp: rec, fee } : { refund: total, comp: 0, fee: 0 } };
   };
 
   const started = !!d.location?.scheduled_start && nowMs >= new Date(d.location.scheduled_start).getTime();
@@ -312,6 +308,10 @@ function DateCard({ d, reload }) {
         {!TERMINAL.includes(d.status) && d.status !== "PHOTO_VERIFICATION_PENDING" && !(d.status === "INVITATION_SENT" && !isInv) && !started && (
           <Button data-testid={`date-cancel-${d.id}`} disabled={busy} onClick={cancelDate} variant="outline" className="h-9 bg-rose-500/10 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"><X size={14} className="me-1" />{tr("id_cancel_date")}</Button>
         )}
+        {cancelOpen && (() => { const c = cancelInfo(); return (
+          <CancelPreviewDialog open={cancelOpen} onOpenChange={setCancelOpen} total={c.total} taxi={c.taxi} split={c.split} byRequester={isInv}
+            onConfirm={() => { setCancelOpen(false); act(() => post("/cancel")); }} />
+        ); })()}
         {started && !TERMINAL.includes(d.status) && <DateStartedNote id={d.id} />}
         {d.report && <span className="text-[11px] px-2 py-1 rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-200 self-center" data-testid={`date-reported-${d.id}`}>{tr("rp_under_review")}</span>}
         {reportOpen && !d.report && <Button data-testid={`date-report-${d.id}`} onClick={() => setShowReport(v => !v)} variant="outline" className="h-9 bg-rose-500/10 border-rose-500/40 text-rose-300"><Flag size={14} className="me-1" />{tr("id_report_this")}</Button>}

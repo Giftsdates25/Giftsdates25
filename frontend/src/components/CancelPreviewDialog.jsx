@@ -17,9 +17,9 @@ const Row = ({ label, value, strong, testid }) => (
   </div>
 );
 
-export default function CancelPreviewDialog({ open, onOpenChange, total = 0, taxi = 0, byRequester, onConfirm }) {
+export default function CancelPreviewDialog({ open, onOpenChange, total = 0, taxi = 0, byRequester, onConfirm, split }) {
   const { lang } = useApp();
-  const { refund, comp, fee } = cancelSplit(total, byRequester, taxi);
+  const { refund, comp, fee } = split || cancelSplit(total, byRequester, taxi);
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="bg-[#161320] border-white/10 text-white max-w-sm" data-testid="cancel-preview-dialog">
