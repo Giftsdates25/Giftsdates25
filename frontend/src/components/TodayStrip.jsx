@@ -34,7 +34,7 @@ export default function TodayStrip({ items }) {
                 <span className="font-mono-num text-white">{b.start}</span>
                 <span className="text-slate-500">–{b.end}</span>
                 <span className="text-slate-300 truncate max-w-[120px]">{name}</span>
-                {b.late && <span className="text-[10px] text-amber-300">+{b.late.minutes}′</span>}
+                {(b.late || b.client_late) && <span className="text-[10px] text-amber-300">+{Math.max(b.late?.minutes || 0, b.client_late?.minutes || 0)}′</span>}
               </div>
             );
           })}

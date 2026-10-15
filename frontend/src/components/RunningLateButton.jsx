@@ -9,12 +9,13 @@ import { t } from "../lib/i18n";
 const MINUTES = [5, 10, 15, 20, 30, 45, 60];
 
 export default function RunningLateButton({ b, onDone }) {
-  const { lang } = useApp();
+  const { lang, user } = useApp();
+  const isVip = user?.id === b.vip_id;
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(null);
   const send = async (m) => {
     setBusy(m);
-    try { await api.post(`/vip/schedule/bookings/${b.id}/late`, { minutes: m }); toast.success(t("lt_sent_toast", lang)); setOpen(false); onDone?.(); }
+    try { await api.post(`/vip/schedule/bookings/${b.id}/late`, { minutes: m }); toast.success(t(isVip ? "lt_sent_toast" : "lt_sent_toast_vip", lang)); setOpen(false); onDone?.(); }
     catch (e) { toast.error(e.response?.data?.detail === "NOT_DATE_TIME" ? t("lt_window_err", lang) : e.response?.data?.detail || "Error"); }
     finally { setBusy(null); }
   };
@@ -25,7 +26,7 @@ export default function RunningLateButton({ b, onDone }) {
         <Timer size={14} className="me-1.5" />{t("lt_btn", lang)}
       </PopoverTrigger>
       <PopoverContent className="bg-[#161320] border-white/10 text-white w-64" data-testid={`vs-late-panel-${b.id}`}>
-        <p className="text-xs text-slate-400 mb-2.5">{t("lt_title", lang)}</p>
+        <p className="text-xs text-slate-400 mb-2.5">{t(isVip ? "lt_title" : "lt_title_client", lang)}</p>
         <div className="grid grid-cols-4 gap-1.5">
           {MINUTES.map((m) => (
             <button key={m} type="button" disabled={!!busy} onClick={() => send(m)} data-testid={`vs-late-${b.id}-${m}`}

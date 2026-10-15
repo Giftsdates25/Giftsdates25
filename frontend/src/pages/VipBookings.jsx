@@ -115,9 +115,10 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
         {b.status === "confirmed" && <AddToCalendar id={b.id} title={`GiftsDates VIP: ${b.activity || card?.name || "Date"}`} place={[b.location?.address, b.location?.city].filter(Boolean).join(", ") || b.venue || b.activity} start={start} end={end} link="/vip-bookings" />}
         {b.status === "confirmed" && b.location?.address && <DirectionsButton loc={b.location} testid={`vs-directions-${b.id}`} />}
         {who === "outgoing" && checkInOpen && !b.arrived_at && <ArrivedButton b={b} onDone={onReload} />}
-        {who === "incoming" && lateOpen && <RunningLateButton b={b} onDone={onReload} />}
+        {lateOpen && <RunningLateButton b={b} onDone={onReload} />}
         {who === "outgoing" && noShowOpen && <NoShowReport b={b} onDone={onReload} />}
         {b.late && b.status === "confirmed" && <span className="inline-flex items-center h-9 px-3 rounded-md text-xs bg-amber-500/15 border border-amber-500/40 text-amber-200" data-testid={`vs-late-badge-${b.id}`}>⏱ {t("lt_badge", lang).replace("{m}", b.late.minutes)}</span>}
+        {b.client_late && b.status === "confirmed" && <span className="inline-flex items-center h-9 px-3 rounded-md text-xs bg-amber-500/15 border border-amber-500/40 text-amber-200" data-testid={`vs-client-late-badge-${b.id}`}>⏱ {t("lt_badge_client", lang).replace("{m}", b.client_late.minutes)}</span>}
         {b.arrived_at && <span className="inline-flex items-center h-9 px-3 rounded-md text-xs bg-emerald-500/15 border border-emerald-500/40 text-emerald-200" data-testid={`vs-arrived-badge-${b.id}`}>📍 {t("ar_arrived_at", lang).replace("{t}", new Date(b.arrived_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>}
         {who === "outgoing" && live && <ExtendDateButton id={b.id} url={`/vip/schedule/bookings/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={onReload} />}
         <div className="text-right me-1">

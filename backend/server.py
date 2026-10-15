@@ -4268,18 +4268,21 @@ class VipLateReq(BaseModel):
 
 @api.post("/vip/schedule/bookings/{bid}/late")
 async def vs_running_late(bid: str, req: VipLateReq, user=Depends(get_current_user)):
+    """Either side sends a 'running late' heads-up; the other side is notified instantly."""
     b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
     if not b: raise HTTPException(404, "Not found")
-    if b["vip_id"] != user["id"]: raise HTTPException(403, "Only the VIP can send this")
+    if user["id"] not in (b["vip_id"], b["requester_id"]): raise HTTPException(403, "Not your booking")
     if req.minutes not in (5, 10, 15, 20, 30, 45, 60): raise HTTPException(400, "BAD_MINUTES")
     now = datetime.now(timezone.utc)
     if b["status"] != "confirmed" or not (_vs_start_dt(b) - timedelta(hours=3) <= now < _vs_end_dt(b)): raise HTTPException(400, "NOT_DATE_TIME")
+    is_vip_side = user["id"] == b["vip_id"]
+    field, other, who = ("late", b["requester_id"], "Your VIP") if is_vip_side else ("client_late", b["vip_id"], "Your client")
     late = {"minutes": req.minutes, "at": now.isoformat()}
-    await db.vip_sched.update_one({"id": bid}, {"$set": {"late": late}})
-    await notify(b["requester_id"], "vs_late", f"Your VIP is running {req.minutes} min late ⏱",
+    await db.vip_sched.update_one({"id": bid}, {"$set": {field: late}})
+    await notify(other, "vs_late", f"{who} is running {req.minutes} min late ⏱",
                  f"{user['name']} is running about {req.minutes} minutes late for your date at {b['start']}. Hang tight!", {"booking_id": bid, "minutes": req.minutes},
                  email=True, link=f"{PUBLIC_APP_URL}/vip-bookings", cta="Open VIP Bookings")
-    return {"ok": True, "late": late}
+    return {"ok": True, field: late}
 
 # ---- Arrival check-in: client taps "I've arrived" ----
 @api.post("/vip/schedule/bookings/{bid}/arrived")

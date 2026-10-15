@@ -29,6 +29,8 @@ export default function CancelPreviewDialog({ open, onOpenChange, total = 0, tax
         </AlertDialogHeader>
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-1.5">
           <Row label={t("cp_paid", lang)} value={total} testid="cancel-preview-paid" />
+          {taxi > 0 && <Row label={`🚕 ${t("cp_taxi_full", lang)}`} value={taxi} testid="cancel-preview-taxi" />}
+          {taxi > 0 && byRequester && <Row label={t("cp_date_back", lang)} value={refund - taxi} testid="cancel-preview-date-back" />}
           <Row label={t(byRequester ? "cp_you_get" : "cp_client_gets", lang)} value={refund} strong testid="cancel-preview-refund" />
           {byRequester && <Row label={t("cp_other_gets", lang)} value={comp} testid="cancel-preview-comp" />}
           {byRequester && <Row label={t("cp_fee", lang)} value={fee} testid="cancel-preview-fee" />}
