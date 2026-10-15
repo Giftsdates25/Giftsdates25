@@ -4,10 +4,10 @@ import { useApp } from "../context/AppContext";
 import { t } from "../lib/i18n";
 
 // byRequester: the person who sent/paid cancels -> 50% back, 25% other side, 25% fee; otherwise full refund.
-export const cancelSplit = (total, byRequester) => {
+export const cancelSplit = (total, byRequester, taxi = 0) => {
   if (!byRequester) return { refund: total, comp: 0, fee: 0 };
-  const refund = Math.round(total * 0.5), comp = Math.round(total * 0.25);
-  return { refund, comp, fee: total - refund - comp };
+  const base = total - taxi, refund = Math.round(base * 0.5), comp = Math.round(base * 0.25);
+  return { refund: refund + taxi, comp, fee: base - refund - comp };
 };
 
 const Row = ({ label, value, strong, testid }) => (
@@ -17,9 +17,9 @@ const Row = ({ label, value, strong, testid }) => (
   </div>
 );
 
-export default function CancelPreviewDialog({ open, onOpenChange, total = 0, byRequester, onConfirm }) {
+export default function CancelPreviewDialog({ open, onOpenChange, total = 0, taxi = 0, byRequester, onConfirm }) {
   const { lang } = useApp();
-  const { refund, comp, fee } = cancelSplit(total, byRequester);
+  const { refund, comp, fee } = cancelSplit(total, byRequester, taxi);
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="bg-[#161320] border-white/10 text-white max-w-sm" data-testid="cancel-preview-dialog">

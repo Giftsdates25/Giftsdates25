@@ -83,6 +83,16 @@ function VipUpsell({ onGo }) {
   );
 }
 
+function NoShowButton({ b, onDone }) {
+  const { lang, refreshUser } = useApp();
+  const go = async () => {
+    if (!window.confirm(t("ns_confirm", lang).replace("{c}", b.coins))) return;
+    try { await api.post(`/vip/schedule/bookings/${b.id}/no-show`); toast.success(t("ns_done", lang)); await refreshUser(); onDone?.(); }
+    catch (e) { toast.error(e.response?.data?.detail || "Error"); }
+  };
+  return <Button data-testid={`vs-no-show-${b.id}`} size="sm" variant="outline" onClick={go} className="bg-white/5 border-rose-500/40 text-rose-300 hover:bg-rose-500/10 h-9">{t("ns_btn", lang)}</Button>;
+}
+
 function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onReload, busyId }) {
   const { lang } = useApp();
   const card = who === "incoming" ? b.requester : b.vip_card;
@@ -92,6 +102,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
   const live = b.status === "confirmed" && now >= start.getTime() && now < end.getTime();
   const checkInOpen = b.status === "confirmed" && now >= start.getTime() - 2 * 3600000 && now < end.getTime();
   const lateOpen = b.status === "confirmed" && now >= start.getTime() - 3 * 3600000 && now < end.getTime();
+  const noShowOpen = b.status === "confirmed" && now >= start.getTime() + 15 * 60000 && now < end.getTime();
   return (
     <div className={`glass rounded-2xl p-4 border-s-2 ${ACCENT[b.status] || "border-s-white/10"} transition-colors hover:bg-white/[0.04]`} data-testid={`vs-booking-${b.id}`}>
     <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -115,6 +126,7 @@ function BookingCard({ b, who, onConfirm, onDecline, onCancel, onReschedule, onR
         {b.status === "confirmed" && b.location?.address && <DirectionsButton loc={b.location} testid={`vs-directions-${b.id}`} />}
         {who === "outgoing" && checkInOpen && !b.arrived_at && <ArrivedButton b={b} onDone={onReload} />}
         {who === "incoming" && lateOpen && <RunningLateButton b={b} onDone={onReload} />}
+        {who === "outgoing" && noShowOpen && <NoShowButton b={b} onDone={onReload} />}
         {b.late && b.status === "confirmed" && <span className="inline-flex items-center h-9 px-3 rounded-md text-xs bg-amber-500/15 border border-amber-500/40 text-amber-200" data-testid={`vs-late-badge-${b.id}`}>⏱ {t("lt_badge", lang).replace("{m}", b.late.minutes)}</span>}
         {b.arrived_at && <span className="inline-flex items-center h-9 px-3 rounded-md text-xs bg-emerald-500/15 border border-emerald-500/40 text-emerald-200" data-testid={`vs-arrived-badge-${b.id}`}>📍 {t("ar_arrived_at", lang).replace("{t}", new Date(b.arrived_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</span>}
         {who === "outgoing" && live && <ExtendDateButton id={b.id} url={`/vip/schedule/bookings/${b.id}/extend`} price={b.extra_hour_price || 250} onDone={onReload} />}
@@ -283,7 +295,7 @@ export default function VipBookings() {
         <DateBookingList mode="vip" />
       </section>
 
-      <CancelPreviewDialog open={!!cancelFor} onOpenChange={(o) => !o && setCancelFor(null)} total={cancelFor?.b.coins || 0}
+      <CancelPreviewDialog open={!!cancelFor} onOpenChange={(o) => !o && setCancelFor(null)} total={cancelFor?.b.coins || 0} taxi={cancelFor?.b.taxi_coins || 0}
         byRequester={cancelFor?.who === "outgoing"} onConfirm={() => { const id = cancelFor.b.id; setCancelFor(null); doCancel(id); }} />
       {reschedule && (
         <VipDateBookModal

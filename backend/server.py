@@ -4189,6 +4189,20 @@ async def vs_pickup_answer(bid: str, action: str, user=Depends(get_current_user)
                  f"{user['name']} declined the pick-up for {b['date']} · {b['start']}. The taxi request is still open.", {"booking_id": bid})
     return {"ok": True, "status": b["status"]}
 
+# ---- Client reports a VIP no-show: full refund of date + taxi coins ----
+@api.post("/vip/schedule/bookings/{bid}/no-show")
+async def vs_no_show(bid: str, user=Depends(get_current_user)):
+    b = await db.vip_sched.find_one({"id": bid}, {"_id": 0})
+    if not b: raise HTTPException(404, "Not found")
+    if b["requester_id"] != user["id"]: raise HTTPException(403, "Only the client can report a no-show")
+    now = datetime.now(timezone.utc)
+    if b["status"] != "confirmed" or not (_vs_start_dt(b) + timedelta(minutes=15) <= now < _vs_end_dt(b)): raise HTTPException(400, "NO_SHOW_WINDOW")
+    await _vs_release(b, user["name"], "no_show")
+    await db.vip_sched.update_one({"id": bid}, {"$set": {"status": "cancelled", "no_show": True, "cancelled_at": now.isoformat(), "cancelled_by": user["id"],
+                                                         "refund": int(b.get("coins") or 0), "compensation": 0, "platform_fee": 0}})
+    await notify(b["vip_id"], "vs_no_show", "No-show reported", f"{user['name']} reported that you did not show up for the date on {b['date']} · {b['start']}. All coins were refunded to the client.", {"booking_id": bid}, email=True)
+    return {"status": "cancelled", "refunded": int(b.get("coins") or 0)}
+
 # ---- VIP running late: instant heads-up to the client ----
 class VipLateReq(BaseModel):
     minutes: int = 10
@@ -4237,9 +4251,12 @@ async def vs_cancel(bid: str, user=Depends(get_current_user)):
     other = b["vip_id"] if user["id"] == b["requester_id"] else b["requester_id"]
     coins = int(b.get("coins") or 0)
     if user["id"] == b["requester_id"] and coins:
-        # requester cancels -> same rule as regular dates: 50% back, 25% to the VIP, 25% platform fee
-        refund, comp = int(round(coins * 0.5)), int(round(coins * 0.25))
-        fee = coins - refund - comp
+        # requester cancels -> date coins: 50% back, 25% to the VIP, 25% platform fee; taxi coins always fully refunded
+        taxi_c = int(b.get("taxi_coins") or 0)
+        base = coins - taxi_c
+        refund, comp = int(round(base * 0.5)), int(round(base * 0.25))
+        fee = base - refund - comp
+        refund += taxi_c
         await db.users.update_one({"id": b["requester_id"]}, {"$inc": {"coins": refund}})
         await db.users.update_one({"id": b["vip_id"]}, {"$inc": {"escrow": -coins, "withdrawable": comp}})
         await db.transactions.insert_one({"id": str(uuid.uuid4()), "type": "date_cancel_fee", "from_id": b["requester_id"], "to_id": b["vip_id"], "cost": comp, "net": comp, "created_at": now})
